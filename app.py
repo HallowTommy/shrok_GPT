@@ -8,6 +8,8 @@ app = FastAPI()
 # Загрузка модели GPT-Neo
 MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token  # Устанавливаем pad_token как eos_token
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 
 # WebSocket для взаимодействия с клиентом
@@ -32,14 +34,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 attention_mask=inputs["attention_mask"],
                 max_length=150,  # Ограничение длины ответа
                 num_return_sequences=1,
-                no_repeat_ngram_size=2,  # Уменьшение повторений
-                pad_token_id=tokenizer.eos_token_id,
+                no_repeat_ngram_size=2,
+                pad_token_id=tokenizer.pad_token_id,
             )
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Логика проверки ответа
-            if not response.strip():
-                response = "I'm sorry, I didn't understand that."
             
             # Отправка ответа клиенту
             await websocket.send_text(response)
