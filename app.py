@@ -10,6 +10,10 @@ MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 
+# Устройство для работы модели (CPU, так как нет GPU)
+device = torch.device("cpu")
+model = model.to(device)
+
 # WebSocket для взаимодействия с клиентом
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -24,12 +28,20 @@ async def websocket_endpoint(websocket: WebSocket):
             if len(data) > 500:
                 await websocket.send_text("Message is too long. Please send a shorter message.")
                 continue
-            
+
+            # Очистка сообщения
+            sanitized_data = data.strip()
+
             # Генерация ответа
-            inputs = tokenizer.encode(data, return_tensors="pt")
-            outputs = model.generate(inputs, max_length=150, num_return_sequences=1)
+            inputs = tokenizer(sanitized_data, return_tensors="pt", truncation=True).to(device)
+            outputs = model.generate(
+                inputs["input_ids"],
+                max_length=150,
+                pad_token_id=tokenizer.eos_token_id,
+                attention_mask=inputs["attention_mask"]
+            )
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
+
             # Отправка ответа клиенту
             await websocket.send_text(response)
     except WebSocketDisconnect:
