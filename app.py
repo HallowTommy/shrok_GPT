@@ -8,24 +8,27 @@ app = FastAPI()
 # Загрузка модели GPT-Neo
 MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=torch.float16).cuda()
 
+# WebSocket для взаимодействия с клиентом
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            # Получаем сообщение от клиента
+            # Получение сообщения
             data = await websocket.receive_text()
             print(f"Received: {data}")
-
+            
             # Генерация ответа
-            inputs = tokenizer.encode(data, return_tensors="pt")
+            inputs = tokenizer.encode(data, return_tensors="pt").cuda()
             outputs = model.generate(inputs, max_length=150, num_return_sequences=1)
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-            # Отправляем обратно
+            
+            # Отправка ответа клиенту
             await websocket.send_text(response)
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
     except Exception as e:
-        print(f"Error: {e}")
-        await websocket.close()
+        print(f"Unexpected error: {e}")
+        await websocket.close(code=1001)
