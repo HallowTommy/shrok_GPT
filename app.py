@@ -26,9 +26,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             
             # Генерация ответа
-            inputs = tokenizer.encode(data, return_tensors="pt")
-            outputs = model.generate(inputs, max_length=150, num_return_sequences=1)
+            inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True, max_length=128)
+            outputs = model.generate(
+                inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                max_length=150,  # Ограничение длины ответа
+                num_return_sequences=1,
+                no_repeat_ngram_size=2,  # Уменьшение повторений
+                pad_token_id=tokenizer.eos_token_id,
+            )
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Логика проверки ответа
+            if not response.strip():
+                response = "I'm sorry, I didn't understand that."
             
             # Отправка ответа клиенту
             await websocket.send_text(response)
