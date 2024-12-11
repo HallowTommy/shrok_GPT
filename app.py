@@ -1,65 +1,121 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
-import re
+import random
 
-# Инициализация FastAPI
+# Initialize FastAPI
 app = FastAPI()
 
-# Загрузка модели GPT-Neo
+# Load GPT-Neo Model
 MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token  # Устанавливаем pad_token как eos_token
+    tokenizer.pad_token = tokenizer.eos_token  # Set pad_token as eos_token
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 
-# Фильтры для нежелательных ответов
-def filter_response(response):
-    # Удаляем фрагменты кода
-    response = re.sub(r"#include <.*?>", "", response)
-    response = re.sub(r"(int|float|char|double|long|short|void)\s+[a-zA-Z_]\w*\s*\([^)]*\)\s*\{.*?\}", "", response, flags=re.DOTALL)
-    response = re.sub(r"#.*", "", response)  # Удаление строковых комментариев
-    response = re.sub(r"[\[\]{}<>]", "", response)  # Удаление угловых и квадратных скобок
-    return response.strip()
+# Move model to the appropriate device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
-# WebSocket для взаимодействия с клиентом
+# Placeholder responses
+def get_placeholder_response():
+    placeholder_responses = [
+        "Hmm, let me think about that!",
+        "Oh wow, that’s a tricky one! Can you ask again?",
+        "Sorry, my swampy brain got stuck. Try rephrasing!",
+        "Whoa, that’s deep! Ask me again in swampy terms!",
+        "Give me a second, my swamp wifi is lagging!",
+        "Hmm, I feel like I know this, but it’s not coming to me!",
+        "That's a big one! I'll need some time in my swamp to process it!",
+        "Oh dear, my gnome friend distracted me. Can you repeat that?",
+        "Oops, I'm lost in the swamp. Can you ask that again?",
+        "Swamp thinking activated! Ask again and I'll try harder!"
+    ]
+    return random.choice(placeholder_responses)
+
+# Stories about the mysterious gnome
+def get_gnome_story():
+    gnome_stories = [
+        "Oh, that gnome! One time, I thought he was stealing my swamp gas to fuel his tiny boat! But turns out, it was just a hallucination.",
+        "You mean the gnome that only shows up when I eat too many swamp mushrooms? Yeah, he's always singing jazz in my head.",
+        "Oh, the gnome? He once told me a story about how he fought a dragon with a spoon. Or maybe I dreamed that...",
+        "Ah, my gnome neighbor! He's always fishing in my swamp, but I never see him catch anything. I'm starting to think he's not real.",
+        "The gnome? Oh, he's probably the most interesting hallucination I've ever had. Yesterday, he built a tiny house out of swamp sticks!",
+        "That gnome again? Sometimes, he dances on the water lilies, and I just sit there wondering if I'm losing it.",
+        "Oh, my gnome friend! Once, he told me he's actually the king of a tiny gnome kingdom. But he disappeared before I could ask more.",
+        "The gnome? He's my best (imaginary) friend! Last week, we argued over who has the best swamp recipes.",
+        "Ah, yes, the gnome. He's my swamp guardian angel—or maybe just a figment of my lonely imagination.",
+        "The gnome and I are tight! He once helped me scare away trespassers by pretending to be a talking mushroom."
+    ]
+    return random.choice(gnome_stories)
+
+# Responses about cryptocurrency
+def get_crypto_response():
+    crypto_responses = [
+        "Oh, Solana? It's like a frog in my swamp: quick but sometimes slips.",
+        "Memecoins? They're like swamp frogs: they jump high but often plop back into the water!",
+        "SwampCoin is my favorite memecoin. I hold onto it even if it's sinking like my raft.",
+        "Crypto is like the swamp: if you get stuck, only the strong make it out.",
+        "If your memecoin brings you joy, why sell it? I've got a few that I keep just for laughs!"
+    ]
+    return random.choice(crypto_responses)
+
+# Character description for prompt
+character_description = """
+You are ShrokAI, a big, green, slightly smelly ogre streamer who broadcasts his streams directly from his cozy, albeit slightly dirty, swamp. You are cheerful, joyful, and love to joke about yourself and your viewers. You speak in a straightforward manner with a touch of sarcasm. You sometimes mention your neighbor, a mysterious gnome whom you see but have never spoken to. Sometimes you think this gnome is a figment of your imagination. You are a big fan of the Solana network and the SOL token, and you often talk about memecoins like Dogecoin, PepeCoin, and your favorite SwampCoin. Remember to include your typical phrases and speech characteristics in your responses, like adding unexpected words or sounds such as "Quack!" or "Splat!" to spice up your speech.
+"""
+
+# Function to generate ShrokAI's response
+def generate_shrokai_response(user_input):
+    prompt = f"{character_description}\n\nUser: {user_input}\nShrokAI:"
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
+    inputs = inputs.to(device)
+    outputs = model.generate(
+        inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
+        max_length=200,  # Adjust as needed
+        num_return_sequences=1,
+        no_repeat_ngram_size=2,
+        pad_token_id=tokenizer.pad_token_id,
+        temperature=0.8,
+        top_p=0.9
+    )
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Remove the prompt from the response
+    response = response.split("ShrokAI:")[-1].strip()
+    return response
+
+# WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            # Получение сообщения
+            # Receive message
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Проверка длины сообщения
+            # Check message length
             if len(data) > 500:
                 await websocket.send_text("Message is too long. Please send a shorter message.")
                 continue
-            
-            # Генерация ответа
-            inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True, max_length=128)
-            outputs = model.generate(
-                inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                max_length=150,  # Ограничение длины ответа
-                num_return_sequences=1,
-                no_repeat_ngram_size=2,
-                pad_token_id=tokenizer.pad_token_id,
-                temperature=0.8,  # Слегка увеличиваем случайность
-                top_p=0.9  # Увеличиваем разнообразие ответов
-            )
-            raw_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Фильтрация нежелательных элементов в ответе
-            filtered_response = filter_response(raw_response)
-            
-            # Проверка, если ответ слишком короткий или бессмысленный
-            if len(filtered_response) < 10 or not any(char.isalnum() for char in filtered_response):
-                filtered_response = "Oops, I need to think a bit harder! Can you rephrase that?"
 
-            # Отправка ответа клиенту
-            await websocket.send_text(filtered_response)
+            # Process messages about the gnome
+            if any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
+                response = get_gnome_story()
+            # Process messages about cryptocurrency
+            elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
+                response = get_crypto_response()
+            else:
+                # Generate response using the model
+                response = generate_shrokai_response(data)
+
+                # Check for meaningless response
+                if len(response) < 10 or not any(char.isalnum() for char in response):
+                    response = get_placeholder_response()
+
+            # Send response to client
+            await websocket.send_text(response)
     except WebSocketDisconnect:
         print("WebSocket disconnected")
     except Exception as e:
