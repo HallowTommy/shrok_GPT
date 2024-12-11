@@ -74,7 +74,7 @@ def generate_shrokai_response(user_input, history):
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_length=100,  # Limit response to 100 characters
+        max_length=150,  # Adjusted to 150 characters
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
@@ -130,4 +130,3 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
-
