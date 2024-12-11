@@ -11,11 +11,11 @@ MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token  # Set pad_token as eos_token
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-
-# Move model to the appropriate device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
+
+# Dialogue history
+dialogue_history = {}
 
 # Placeholder responses
 def get_placeholder_response():
@@ -62,18 +62,19 @@ def get_crypto_response():
 
 # Character description for prompt
 character_description = """
-You are ShrokAI, a big, green, slightly smelly ogre streamer who broadcasts his streams directly from his cozy, albeit slightly dirty, swamp. You are cheerful, joyful, and love to joke about yourself and your viewers. You speak in a straightforward manner with a touch of sarcasm. You sometimes mention your neighbor, a mysterious gnome whom you see but have never spoken to. Sometimes you think this gnome is a figment of your imagination. You are a big fan of the Solana network and the SOL token, and you often talk about memecoins like Dogecoin, PepeCoin, and your favorite SwampCoin. Remember to include your typical phrases and speech characteristics in your responses, like adding unexpected words or sounds such as "Quack!" or "Splat!" to spice up your speech.
+You are ShrokAI, a big, green, slightly smelly ogre streamer who broadcasts his streams directly from his cozy, albeit slightly dirty, swamp. You are cheerful, joyful, and love to joke about yourself and your viewers. You speak in a straightforward manner with a touch of sarcasm. You sometimes mention your neighbor, a mysterious gnome whom you see but have never spoken to. Sometimes you think this gnome is a figment of your imagination. You are a big fan of the Solana network and the SOL token, and you often talk about memecoins like Dogecoin, PepeCoin, and your favorite SwampCoin. Remember to include your typical phrases and speech characteristics in your responses, like adding unexpected words or sounds such as \"Quack!\" or \"Splat!\" to spice up your speech.
 """
 
 # Function to generate ShrokAI's response
-def generate_shrokai_response(user_input):
-    prompt = f"{character_description}\n\nUser: {user_input}\nShrokAI:"
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
-    inputs = inputs.to(device)
+def generate_shrokai_response(user_input, history):
+    # Combine history with the current user input
+    history_context = "\n".join(history[-5:])  # Include up to the last 5 exchanges for context
+    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_length=200,  # Adjust as needed
+        max_length=100,  # Limit response to 100 characters
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
@@ -81,13 +82,13 @@ def generate_shrokai_response(user_input):
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    # Remove the prompt from the response
     response = response.split("ShrokAI:")[-1].strip()
     return response
 
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
+    user_id = None
     await websocket.accept()
     try:
         while True:
@@ -95,29 +96,38 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
+            # Initialize dialogue history for this user
+            if user_id is None:
+                user_id = id(websocket)
+                dialogue_history[user_id] = []
+
+            # Add user message to history
+            dialogue_history[user_id].append(f"User: {data}")
+
             # Check message length
             if len(data) > 500:
-                await websocket.send_text("Message is too long. Please send a shorter message.")
-                continue
-
-            # Process messages about the gnome
-            if any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
+                response = "Message is too long. Please send a shorter message."
+            elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
                 response = get_gnome_story()
-            # Process messages about cryptocurrency
             elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
                 response = get_crypto_response()
             else:
-                # Generate response using the model
-                response = generate_shrokai_response(data)
+                response = generate_shrokai_response(data, dialogue_history[user_id])
 
                 # Check for meaningless response
                 if len(response) < 10 or not any(char.isalnum() for char in response):
                     response = get_placeholder_response()
 
+            # Add ShrokAI's response to history
+            dialogue_history[user_id].append(f"ShrokAI: {response}")
+
             # Send response to client
             await websocket.send_text(response)
     except WebSocketDisconnect:
         print("WebSocket disconnected")
+        if user_id in dialogue_history:
+            del dialogue_history[user_id]  # Remove history for the disconnected user
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
+
