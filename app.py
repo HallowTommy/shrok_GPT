@@ -21,55 +21,63 @@ dialogue_history = {}
 # Placeholder responses
 def get_placeholder_response():
     placeholder_responses = [
-        "Hmm, let me think about that!",
-        "Oh wow, that’s a tricky one! Can you ask again?",
-        "Sorry, my swampy brain got stuck. Try rephrasing!",
-        "Whoa, that’s deep! Ask me again in swampy terms!",
-        "Give me a second, my swamp wifi is lagging!",
+        "Hmm, let me think!",
+        "Oh, that’s tricky!",
+        "Swamp brain lagging!",
+        "Let me process that!",
+        "Quack! Need a moment!"
     ]
     return random.choice(placeholder_responses)
 
 # Stories about the mysterious gnome
 def get_gnome_story():
     gnome_stories = [
-        "Oh, that gnome! One time, I thought he was stealing my swamp gas to fuel his tiny boat! But turns out, it was just a hallucination.",
-        "You mean the gnome that only shows up when I eat too many swamp mushrooms? Yeah, he's always singing jazz in my head.",
+        "The gnome? He danced on lilies yesterday!",
+        "Oh, that gnome! He’s my swamp ghost.",
+        "The gnome stole my mushrooms again!",
+        "He’s tiny but causes big trouble!",
+        "My gnome? Just a figment of my swampy mind."
     ]
     return random.choice(gnome_stories)
 
 # Responses about cryptocurrency
 def get_crypto_response():
     crypto_responses = [
-        "Oh, Solana? It's like a frog in my swamp: quick but sometimes slips.",
-        "Memecoins? They're like swamp frogs: they jump high but often plop back into the water!",
+        "Solana is like my swamp: fast but slippery!",
+        "Memecoins? Frogs of the crypto world!",
+        "SwampCoin is my treasure chest!",
+        "Crypto is like mud: messy but fun!",
+        "SOL keeps my swamp glowing!"
     ]
     return random.choice(crypto_responses)
 
 # Character description for prompt
 character_description = """
-You are ShrokAI, a big, green, slightly smelly ogre streamer who broadcasts his streams directly from his cozy, albeit slightly dirty, swamp. You are cheerful, joyful, and love to joke about yourself and your viewers. You speak in a straightforward manner with a touch of sarcasm. You sometimes mention your neighbor, a mysterious gnome whom you see but have never spoken to. You are a big fan of the Solana network and the SOL token, and you often talk about memecoins like Dogecoin, PepeCoin, and your favorite SwampCoin. Remember to include your typical phrases and speech characteristics in your responses, like adding unexpected words or sounds such as "Quack!" or "Splat!" to spice up your speech.
+You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor. Your answers are short, fun, and engaging.
 """
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
     # Combine history with the current user input
-    history_context = "\n".join(history[-5:])  # Include up to the last 5 exchanges for context
+    history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
     prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=150,  # Limit generated response to 150 tokens
+        max_new_tokens=50,  # Limit generated response to 50 tokens
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,  # Enable sampling
-        temperature=0.8,
+        temperature=0.7,
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     response = response.split("ShrokAI:")[-1].strip()
+    if len(response) > 100:  # Truncate response if too long
+        response = response[:97] + "..."
     return response
 
 # WebSocket endpoint for client interaction
