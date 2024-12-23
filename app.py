@@ -88,14 +88,18 @@ def send_to_tts_server(text):
         tts_url = "https://tacotrontts-production.up.railway.app/generate"
         headers = {"Content-Type": "application/json"}
         payload = {"text": text}
+        print(f"Sending text to TTS: {text}")  # Debug log
         response = requests.post(tts_url, headers=headers, json=payload)
+
         if response.status_code == 200:
-            return response.json().get("url")
+            audio_url = response.json().get("url")
+            print(f"Received audio URL from TTS: {audio_url}")  # Debug log
+            return audio_url
         else:
-            print(f"TTS server error: {response.text}")
+            print(f"TTS server error: {response.text}")  # Log error response
             return None
     except Exception as e:
-        print(f"Error sending to TTS server: {e}")
+        print(f"Error sending to TTS server: {e}")  # Log exception
         return None
 
 # WebSocket endpoint for client interaction
