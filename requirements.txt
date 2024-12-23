@@ -4,3 +4,4 @@ transformers
 torch
 websockets
 requests
+httpx
