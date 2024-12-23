@@ -18,6 +18,7 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input):
+    print(f"[DEBUG] Generating response for input: {user_input}")
     prompt = f"You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor.\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
@@ -34,6 +35,7 @@ def generate_shrokai_response(user_input):
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     response = response.split("ShrokAI:")[-1].strip()
+    print(f"[DEBUG] Generated response: {response}")
     return response[:100] if len(response) > 100 else response
 
 # Async function to send text to TTS server and get audio URL
@@ -62,6 +64,7 @@ async def send_to_tts_server(text):
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    print("[DEBUG] WebSocket connection established")
     try:
         while True:
             # Receive message
@@ -70,15 +73,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Generate AI response
             response = generate_shrokai_response(data)
-            print(f"[DEBUG] Generated response: {response}")
 
             # Send response to TTS
             audio_url = await send_to_tts_server(response)
 
             # Send response back to the client
             if audio_url:
+                print(f"[DEBUG] Sending response with audio URL to client")
                 await websocket.send_text(json.dumps({"text": response, "audio_url": audio_url}))
             else:
+                print(f"[DEBUG] Sending text-only response to client")
                 await websocket.send_text(json.dumps({"text": response}))
     except WebSocketDisconnect:
         print("[DEBUG] WebSocket disconnected")
