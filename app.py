@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
+import requests  # Для взаимодействия с TTS сервером
 
 # Initialize FastAPI
 app = FastAPI()
@@ -80,26 +81,54 @@ def generate_shrokai_response(user_input, history):
         response = response[:97] + "..."
     return response
 
-# WebSocket endpoint for client interaction
+# WebSocket managers
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                print(f"Failed to send message: {e}")
+
+chat_manager = ConnectionManager()
+tts_manager = ConnectionManager()
+
+# WebSocket endpoint for TTS
+@app.websocket("/ws/tts")
+async def tts_websocket_endpoint(websocket: WebSocket):
+    await tts_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        tts_manager.disconnect(websocket)
+
+# WebSocket endpoint for AI
 @app.websocket("/ws/ai")
-async def websocket_endpoint(websocket: WebSocket):
+async def ai_websocket_endpoint(websocket: WebSocket):
     user_id = None
     await websocket.accept()
     try:
         while True:
-            # Receive message
             data = await websocket.receive_text()
-            print(f"Received: {data}")
 
-            # Initialize dialogue history for this user
             if user_id is None:
                 user_id = id(websocket)
                 dialogue_history[user_id] = []
 
-            # Add user message to history
             dialogue_history[user_id].append(f"User: {data}")
 
-            # Check message length
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
             elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
@@ -109,19 +138,26 @@ async def websocket_endpoint(websocket: WebSocket):
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
 
-                # Check for meaningless response
                 if len(response) < 10 or not any(char.isalnum() for char in response):
                     response = get_placeholder_response()
 
-            # Add ShrokAI's response to history
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
-            # Send response to client
+            # Send response to TTS for synthesis
+            try:
+                tts_response = requests.post(
+                    "http://your-tts-server-url:5000/generate",  # Замените на ваш URL TTS сервера
+                    json={"text": response}
+                )
+                if tts_response.status_code == 200:
+                    audio_url = tts_response.url  # Предполагаем, что сервер возвращает URL аудиофайла
+                    await tts_manager.broadcast(audio_url)
+            except Exception as e:
+                print(f"Error sending to TTS: {e}")
+
+            # Send response to chat
             await websocket.send_text(response)
     except WebSocketDisconnect:
-        print("WebSocket disconnected")
         if user_id in dialogue_history:
-            del dialogue_history[user_id]  # Remove history for the disconnected user
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        await websocket.close(code=1001)
+            del dialogue_history[user_id]
+
