@@ -24,6 +24,9 @@ dialogue_history = {}
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 TTS_DELETE_URL = "https://tacotrontts-production.up.railway.app/delete"
 
+# Latest audio data
+latest_audio = {"audio_url": "", "timestamp": 0}
+
 # Placeholder responses
 def get_placeholder_response():
     placeholder_responses = [
@@ -118,10 +121,14 @@ def delete_audio_file(audio_url):
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
+    global latest_audio
     user_id = None
-    start_time = None
     await websocket.accept()
     try:
+        # Send latest audio to new client
+        if latest_audio["audio_url"]:
+            await websocket.send_json(latest_audio)
+
         while True:
             data = await websocket.receive_text()
             print(f"Received: {data}")
@@ -146,13 +153,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
             try:
                 audio_url = send_to_tts(response)
-                if not audio_url:
+                if audio_url:
+                    latest_audio = {"audio_url": audio_url, "timestamp": time.time()}
+                else:
                     print("No audio_url received from TTS.")
             except Exception as e:
                 print(f"Error in TTS integration: {e}")
                 audio_url = ""
 
-            timestamp = time.time() - start_time if start_time else 0
+            timestamp = time.time() - latest_audio["timestamp"] if latest_audio["timestamp"] else 0
             dialogue_history[user_id].append(f"ShrokAI: {response}")
             await websocket.send_json({"text": response, "audio_url": audio_url, "timestamp": timestamp})
             print(f"Sent to client: text={response}, audio_url={audio_url}, timestamp={timestamp}")
