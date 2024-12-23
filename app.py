@@ -3,6 +3,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
+import re
 
 # Initialize FastAPI
 app = FastAPI()
@@ -33,10 +34,17 @@ def get_placeholder_response():
 # TTS server URL
 TTS_SERVER_URL = "http://your-tts-server-url:5000/generate"
 
+# Clean text for TTS
+def clean_text_for_tts(text):
+    """Removes unsupported characters and symbols from text."""
+    text = re.sub(r"[^a-zA-Z0-9,.!? ]", "", text)  # Remove unsupported characters
+    return text.strip()
+
 # Send text to TTS server
 def send_to_tts(text):
     try:
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
+        clean_text = clean_text_for_tts(text)
+        response = requests.post(TTS_SERVER_URL, json={"text": clean_text})
         response.raise_for_status()
         data = response.json()
         return data.get("url", "")
