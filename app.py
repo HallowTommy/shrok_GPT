@@ -138,7 +138,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "audio", "url": audio_url})
 
             # Send response to client
-            await websocket.send_text(response)
+            await websocket.send_json({"type": "text", "message": response})
     except WebSocketDisconnect:
         print("WebSocket disconnected")
         if user_id in dialogue_history:
