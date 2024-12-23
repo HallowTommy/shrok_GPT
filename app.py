@@ -30,6 +30,28 @@ def get_placeholder_response():
     ]
     return random.choice(placeholder_responses)
 
+# Stories about the mysterious gnome
+def get_gnome_story():
+    gnome_stories = [
+        "The gnome? He danced on lilies yesterday!",
+        "Oh, that gnome! He’s my swamp ghost.",
+        "The gnome stole my mushrooms again!",
+        "He’s tiny but causes big trouble!",
+        "My gnome? Just a figment of my swampy mind."
+    ]
+    return random.choice(gnome_stories)
+
+# Responses about cryptocurrency
+def get_crypto_response():
+    crypto_responses = [
+        "Solana is like my swamp: fast but slippery!",
+        "Memecoins? Frogs of the crypto world!",
+        "SwampCoin is my treasure chest!",
+        "Crypto is like mud: messy but fun!",
+        "SOL keeps my swamp glowing!"
+    ]
+    return random.choice(crypto_responses)
+
 # Character description for prompt
 character_description = """
 You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor. Your answers are short, fun, and engaging.
@@ -84,11 +106,13 @@ tts_manager = ConnectionManager()
 # WebSocket endpoint for TTS
 @app.websocket("/ws/tts")
 async def tts_websocket_endpoint(websocket: WebSocket):
+    print("New TTS WebSocket connection")
     await tts_manager.connect(websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
+        print("TTS WebSocket disconnected")
         tts_manager.disconnect(websocket)
 
 # WebSocket endpoint for AI
@@ -108,8 +132,15 @@ async def ai_websocket_endpoint(websocket: WebSocket):
 
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
+            elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
+                response = get_gnome_story()
+            elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
+                response = get_crypto_response()
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
+
+                if len(response) < 10 or not any(char.isalnum() for char in response):
+                    response = get_placeholder_response()
 
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
@@ -120,11 +151,14 @@ async def ai_websocket_endpoint(websocket: WebSocket):
                     "http://tacotrontts-production.up.railway.app/generate",
                     json={"text": response}
                 )
+                print(f"TTS Request sent. Text: {response}")
+                print(f"TTS Response Status: {tts_response.status_code}, Response: {tts_response.text}")
+
                 if tts_response.status_code == 200:
-                    audio_url = tts_response.json().get("url")
+                    audio_url = tts_response.json().get("url")  # Извлекаем URL из JSON
                     if audio_url:
-                        print(f"TTS Audio URL: {audio_url}")
-                        await tts_manager.broadcast(audio_url)
+                        print(f"Broadcasting audio URL: {audio_url}")
+                        await tts_manager.broadcast(audio_url)  # Передаём URL на WebSocket
                     else:
                         print("TTS response does not contain 'url'")
                 else:
