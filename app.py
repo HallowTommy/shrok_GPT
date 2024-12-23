@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
+import requests
 
 # Initialize FastAPI
 app = FastAPI()
@@ -17,6 +18,9 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
 # Dialogue history
 dialogue_history = {}
+
+# TTS Server URL
+TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
 # Placeholder responses
 def get_placeholder_response():
@@ -80,6 +84,20 @@ def generate_shrokai_response(user_input, history):
         response = response[:97] + "..."
     return response
 
+# Function to send text to TTS and get audio URL
+def send_to_tts(text):
+    try:
+        response = requests.post(TTS_SERVER_URL, json={"text": text})
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("audio_url", "")
+        else:
+            print(f"TTS server error: {response.status_code}")
+            return ""
+    except Exception as e:
+        print(f"Error sending to TTS: {e}")
+        return ""
+
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -102,10 +120,13 @@ async def websocket_endpoint(websocket: WebSocket):
             # Check message length
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
+                audio_url = ""
             elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
                 response = get_gnome_story()
+                audio_url = send_to_tts(response)
             elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
                 response = get_crypto_response()
+                audio_url = send_to_tts(response)
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
 
@@ -113,11 +134,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 if len(response) < 10 or not any(char.isalnum() for char in response):
                     response = get_placeholder_response()
 
+                audio_url = send_to_tts(response)
+
             # Add ShrokAI's response to history
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
             # Send response to client
-            await websocket.send_text(response)
+            await websocket.send_json({"text": response, "audio_url": audio_url})
     except WebSocketDisconnect:
         print("WebSocket disconnected")
         if user_id in dialogue_history:
