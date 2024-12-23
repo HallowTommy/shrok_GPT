@@ -3,4 +3,3 @@ uvicorn[standard]
 transformers
 torch
 websockets
-requests
