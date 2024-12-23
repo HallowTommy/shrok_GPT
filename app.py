@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
 import requests
+import time
 
 # Initialize FastAPI
 app = FastAPI()
@@ -102,6 +103,7 @@ def send_to_tts(text):
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     user_id = None
+    start_time = None  # Time when the speech starts
     await websocket.accept()
     try:
         while True:
@@ -121,12 +123,17 @@ async def websocket_endpoint(websocket: WebSocket):
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
                 audio_url = ""
+                timestamp = 0
             elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
                 response = get_gnome_story()
                 audio_url = send_to_tts(response)
+                start_time = time.time()
+                timestamp = 0
             elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
                 response = get_crypto_response()
                 audio_url = send_to_tts(response)
+                start_time = time.time()
+                timestamp = 0
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
 
@@ -135,12 +142,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     response = get_placeholder_response()
 
                 audio_url = send_to_tts(response)
+                start_time = time.time()
+                timestamp = 0
+
+            # Calculate timestamp for late joiners
+            if start_time:
+                timestamp = time.time() - start_time
 
             # Add ShrokAI's response to history
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
             # Send response to client
-            await websocket.send_json({"text": response, "audio_url": audio_url})
+            await websocket.send_json({"text": response, "audio_url": audio_url, "timestamp": timestamp})
     except WebSocketDisconnect:
         print("WebSocket disconnected")
         if user_id in dialogue_history:
