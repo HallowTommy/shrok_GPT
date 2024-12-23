@@ -101,7 +101,6 @@ class ConnectionManager:
             except Exception as e:
                 print(f"Failed to send message: {e}")
 
-chat_manager = ConnectionManager()
 tts_manager = ConnectionManager()
 
 # WebSocket endpoint for TTS
@@ -159,9 +158,6 @@ async def ai_websocket_endpoint(websocket: WebSocket):
                     print(f"TTS server returned an error: {tts_response.status_code}")
             except Exception as e:
                 print(f"Error sending to TTS: {e}")
-
-            # Send response to chat
-            await websocket.send_text(response)
     except WebSocketDisconnect:
         if user_id in dialogue_history:
             del dialogue_history[user_id]
