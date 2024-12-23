@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
-import requests
+import httpx
 import json
 
 # Initialize FastAPI
@@ -82,14 +82,16 @@ def generate_shrokai_response(user_input, history):
         response = response[:97] + "..."
     return response
 
-# Function to send text to TTS server and get audio URL
-def send_to_tts_server(text):
+# Async function to send text to TTS server and get audio URL
+async def send_to_tts_server(text):
+    tts_url = "https://tacotrontts-production.up.railway.app/generate"
+    headers = {"Content-Type": "application/json"}
+    payload = {"text": text}
+
     try:
-        tts_url = "https://tacotrontts-production.up.railway.app/generate"
-        headers = {"Content-Type": "application/json"}
-        payload = {"text": text}
         print(f"Sending text to TTS: {text}")  # Debug log
-        response = requests.post(tts_url, headers=headers, json=payload)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(tts_url, headers=headers, json=payload)
 
         if response.status_code == 200:
             audio_url = response.json().get("url")
@@ -139,7 +141,7 @@ async def websocket_endpoint(websocket: WebSocket):
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
             # Send response to TTS and get audio URL
-            audio_url = send_to_tts_server(response)
+            audio_url = await send_to_tts_server(response)
             if audio_url:
                 # Broadcast audio URL to all connected clients
                 await websocket.send_text(json.dumps({"text": response, "audio_url": audio_url}))
@@ -154,3 +156,4 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
+
