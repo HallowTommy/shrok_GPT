@@ -106,11 +106,13 @@ tts_manager = ConnectionManager()
 # WebSocket endpoint for TTS
 @app.websocket("/ws/tts")
 async def tts_websocket_endpoint(websocket: WebSocket):
+    print("New TTS WebSocket connection")
     await tts_manager.connect(websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
+        print("TTS WebSocket disconnected")
         tts_manager.disconnect(websocket)
 
 # WebSocket endpoint for AI
@@ -145,9 +147,12 @@ async def ai_websocket_endpoint(websocket: WebSocket):
             # Send response to TTS for synthesis
             try:
                 tts_response = requests.post(
-                    "http://your-tts-server-url:5000/generate",  # Замените на ваш URL TTS сервера
+                    "http://tacotrontts-production.up.railway.app/generate",
                     json={"text": response}
                 )
+                print(f"TTS Request sent. Text: {response}")
+                print(f"TTS Response Status: {tts_response.status_code}, Response: {tts_response.text}")
+
                 if tts_response.status_code == 200:
                     audio_url = tts_response.json().get("url")  # Извлекаем URL из JSON
                     if audio_url:
