@@ -88,6 +88,8 @@ def generate_shrokai_response(user_input, history):
 def send_to_tts(text):
     try:
         response = requests.post(TTS_SERVER_URL, json={"text": text})
+        print(f"TTS request payload: {text}")
+        print(f"TTS response status: {response.status_code}, body: {response.text}")
         if response.status_code == 200:
             return response.json()["url"]
         else:
