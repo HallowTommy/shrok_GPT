@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
 import requests
+import json
 
 # Initialize FastAPI
 app = FastAPI()
@@ -15,9 +16,6 @@ if tokenizer.pad_token is None:
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
-
-# TTS server URL
-TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
 # Dialogue history
 dialogue_history = {}
@@ -84,25 +82,21 @@ def generate_shrokai_response(user_input, history):
         response = response[:97] + "..."
     return response
 
-# Send text to TTS server and get audio URL
-def send_to_tts(text):
+# Function to send text to TTS server and get audio URL
+def send_to_tts_server(text):
     try:
-        if not text.strip():
-            print("No text provided to TTS.")
-            return None
-
-        print(f"Sending text to TTS: {text}")  # Лог текста
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
-        print(f"TTS response status: {response.status_code}, body: {response.text}")  # Лог ответа
+        tts_url = "https://tacotrontts-production.up.railway.app/generate"
+        headers = {"Content-Type": "application/json"}
+        payload = {"text": text}
+        response = requests.post(tts_url, headers=headers, json=payload)
         if response.status_code == 200:
-            audio_url = response.json().get("url")
-            print(f"TTS generated audio URL: {audio_url}")
-            return audio_url
+            return response.json().get("url")
         else:
-            print(f"TTS server error: {response.status_code}, {response.text}")
+            print(f"TTS server error: {response.text}")
+            return None
     except Exception as e:
-        print(f"Error in send_to_tts: {e}")
-    return None
+        print(f"Error sending to TTS server: {e}")
+        return None
 
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
@@ -111,19 +105,19 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            # Получаем сообщение от пользователя
+            # Receive message
             data = await websocket.receive_text()
-            print(f"Received user input: {data}")
+            print(f"Received: {data}")
 
-            # Инициализируем историю диалога для пользователя
+            # Initialize dialogue history for this user
             if user_id is None:
                 user_id = id(websocket)
                 dialogue_history[user_id] = []
 
-            # Добавляем сообщение пользователя в историю
+            # Add user message to history
             dialogue_history[user_id].append(f"User: {data}")
 
-            # Генерируем ответ ИИ
+            # Check message length
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
             elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
@@ -132,25 +126,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 response = get_crypto_response()
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
+
+                # Check for meaningless response
                 if len(response) < 10 or not any(char.isalnum() for char in response):
                     response = get_placeholder_response()
 
-            # Лог ответа ИИ
-            print(f"Generated AI response: {response}")
+            # Add ShrokAI's response to history
+            dialogue_history[user_id].append(f"ShrokAI: {response}")
 
-            # Отправляем запрос на TTS
-            audio_url = send_to_tts(response)
+            # Send response to TTS and get audio URL
+            audio_url = send_to_tts_server(response)
             if audio_url:
-                print(f"Broadcasting audio URL: {audio_url}")
-                await websocket.send_json({"type": "audio", "url": audio_url})
-
-            # Отправляем текстовый ответ клиенту
-            await websocket.send_json({"type": "text", "message": response})
+                # Broadcast audio URL to all connected clients
+                await websocket.send_text(json.dumps({"text": response, "audio_url": audio_url}))
+            else:
+                # Fallback to text-only response if TTS fails
+                await websocket.send_text(json.dumps({"text": response}))
 
     except WebSocketDisconnect:
-        print("WebSocket disconnected.")
+        print("WebSocket disconnected")
         if user_id in dialogue_history:
-            del dialogue_history[user_id]  # Удаляем историю отключившегося пользователя
+            del dialogue_history[user_id]  # Remove history for the disconnected user
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
