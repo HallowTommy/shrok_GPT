@@ -89,10 +89,14 @@ def generate_shrokai_response(user_input, history):
 # Function to send text to TTS and get audio URL
 def send_to_tts(text):
     try:
+        print(f"Sending text to TTS: {text}")  # Лог текста
         response = requests.post(TTS_SERVER_URL, json={"text": text})
+        print(f"TTS Response: {response.status_code}, {response.text}")  # Логи ответа
         if response.status_code == 200:
             data = response.json()
-            return data.get("audio_url", "")
+            audio_url = data.get("audio_url", "")
+            print(f"Extracted audio_url: {audio_url}")  # Лог audio_url
+            return audio_url
         else:
             print(f"TTS server error: {response.status_code}")
             return ""
@@ -115,67 +119,48 @@ def delete_audio_file(audio_url):
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     user_id = None
-    start_time = None  # Time when the speech starts
-    audio_url = None  # URL of the generated audio
+    start_time = None
     await websocket.accept()
     try:
         while True:
-            # Receive message
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Initialize dialogue history for this user
             if user_id is None:
                 user_id = id(websocket)
                 dialogue_history[user_id] = []
 
-            # Add user message to history
             dialogue_history[user_id].append(f"User: {data}")
 
-            # Check message length
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
                 audio_url = ""
-                timestamp = 0
-            elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
+            elif "gnome" in data.lower():
                 response = get_gnome_story()
-                audio_url = send_to_tts(response)
-                start_time = time.time()
-                timestamp = 0
-            elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
+            elif "crypto" in data.lower():
                 response = get_crypto_response()
-                audio_url = send_to_tts(response)
-                start_time = time.time()
-                timestamp = 0
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
-
-                # Check for meaningless response
-                if len(response) < 10 or not any(char.isalnum() for char in response):
+                if len(response) < 10:
                     response = get_placeholder_response()
 
+            try:
                 audio_url = send_to_tts(response)
-                start_time = time.time()
-                timestamp = 0
+                if not audio_url:
+                    print("No audio_url received from TTS.")
+            except Exception as e:
+                print(f"Error in TTS integration: {e}")
+                audio_url = ""
 
-            # Calculate timestamp for late joiners
-            if start_time:
-                timestamp = time.time() - start_time
-
-            # Add ShrokAI's response to history
+            timestamp = time.time() - start_time if start_time else 0
             dialogue_history[user_id].append(f"ShrokAI: {response}")
-
-            # Send response to client
             await websocket.send_json({"text": response, "audio_url": audio_url, "timestamp": timestamp})
-
-            # Delete audio file after sending
-            if audio_url:
-                delete_audio_file(audio_url)
+            print(f"Sent to client: text={response}, audio_url={audio_url}, timestamp={timestamp}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
         if user_id in dialogue_history:
-            del dialogue_history[user_id]  # Remove history for the disconnected user
+            del dialogue_history[user_id]
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
