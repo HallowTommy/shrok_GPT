@@ -22,6 +22,7 @@ dialogue_history = {}
 
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
+TTS_DELETE_URL = "https://tacotrontts-production.up.railway.app/delete"
 
 # Placeholder responses
 def get_placeholder_response():
@@ -99,11 +100,23 @@ def send_to_tts(text):
         print(f"Error sending to TTS: {e}")
         return ""
 
+# Function to delete audio file after delivery
+def delete_audio_file(audio_url):
+    try:
+        response = requests.post(TTS_DELETE_URL, json={"file_path": audio_url})
+        if response.status_code == 200:
+            print("Audio file deleted successfully.")
+        else:
+            print(f"Failed to delete audio file: {response.status_code}")
+    except Exception as e:
+        print(f"Error deleting audio file: {e}")
+
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     user_id = None
     start_time = None  # Time when the speech starts
+    audio_url = None  # URL of the generated audio
     await websocket.accept()
     try:
         while True:
@@ -154,6 +167,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Send response to client
             await websocket.send_json({"text": response, "audio_url": audio_url, "timestamp": timestamp})
+
+            # Delete audio file after sending
+            if audio_url:
+                delete_audio_file(audio_url)
+
     except WebSocketDisconnect:
         print("WebSocket disconnected")
         if user_id in dialogue_history:
