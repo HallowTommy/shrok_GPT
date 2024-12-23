@@ -2,8 +2,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import random
-import requests
-import time
 
 # Initialize FastAPI
 app = FastAPI()
@@ -19,13 +17,6 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
 # Dialogue history
 dialogue_history = {}
-
-# TTS Server URL
-TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
-TTS_DELETE_URL = "https://tacotrontts-production.up.railway.app/delete"
-
-# Latest audio data
-latest_audio = {"audio_url": "", "timestamp": 0}
 
 # Placeholder responses
 def get_placeholder_response():
@@ -89,87 +80,48 @@ def generate_shrokai_response(user_input, history):
         response = response[:97] + "..."
     return response
 
-# Function to send text to TTS and get audio URL
-def send_to_tts(text):
-    try:
-        print(f"Sending text to TTS: {text}")  # Лог текста
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
-        print(f"TTS Response: {response.status_code}, {response.text}")  # Логи ответа
-        if response.status_code == 200:
-            data = response.json()
-            audio_url = data.get("audio_url", "")
-            print(f"Extracted audio_url: {audio_url}")  # Лог audio_url
-            return audio_url
-        else:
-            print(f"TTS server error: {response.status_code}")
-            return ""
-    except Exception as e:
-        print(f"Error sending to TTS: {e}")
-        return ""
-
-# Function to delete audio file after delivery
-def delete_audio_file(audio_url):
-    try:
-        response = requests.post(TTS_DELETE_URL, json={"file_path": audio_url})
-        if response.status_code == 200:
-            print("Audio file deleted successfully.")
-        else:
-            print(f"Failed to delete audio file: {response.status_code}")
-    except Exception as e:
-        print(f"Error deleting audio file: {e}")
-
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    global latest_audio
     user_id = None
     await websocket.accept()
     try:
-        # Send latest audio to new client
-        if latest_audio["audio_url"]:
-            await websocket.send_json(latest_audio)
-
         while True:
+            # Receive message
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
+            # Initialize dialogue history for this user
             if user_id is None:
                 user_id = id(websocket)
                 dialogue_history[user_id] = []
 
+            # Add user message to history
             dialogue_history[user_id].append(f"User: {data}")
 
+            # Check message length
             if len(data) > 500:
                 response = "Message is too long. Please send a shorter message."
-                audio_url = ""
-            elif "gnome" in data.lower():
+            elif any(keyword in data.lower() for keyword in ["gnome", "mysterious gnome"]):
                 response = get_gnome_story()
-            elif "crypto" in data.lower():
+            elif any(keyword in data.lower() for keyword in ["crypto", "solana", "memecoin", "shitcoin", "swampcoin"]):
                 response = get_crypto_response()
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
-                if len(response) < 10:
+
+                # Check for meaningless response
+                if len(response) < 10 or not any(char.isalnum() for char in response):
                     response = get_placeholder_response()
 
-            try:
-                audio_url = send_to_tts(response)
-                if audio_url:
-                    latest_audio = {"audio_url": audio_url, "timestamp": time.time()}
-                else:
-                    print("No audio_url received from TTS.")
-            except Exception as e:
-                print(f"Error in TTS integration: {e}")
-                audio_url = ""
-
-            timestamp = time.time() - latest_audio["timestamp"] if latest_audio["timestamp"] else 0
+            # Add ShrokAI's response to history
             dialogue_history[user_id].append(f"ShrokAI: {response}")
-            await websocket.send_json({"text": response, "audio_url": audio_url, "timestamp": timestamp})
-            print(f"Sent to client: text={response}, audio_url={audio_url}, timestamp={timestamp}")
 
+            # Send response to client
+            await websocket.send_text(response)
     except WebSocketDisconnect:
         print("WebSocket disconnected")
         if user_id in dialogue_history:
-            del dialogue_history[user_id]
+            del dialogue_history[user_id]  # Remove history for the disconnected user
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
