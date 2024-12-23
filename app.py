@@ -150,8 +150,13 @@ async def ai_websocket_endpoint(websocket: WebSocket):
                     json={"text": response}
                 )
                 if tts_response.status_code == 200:
-                    audio_url = tts_response.url  # Предполагаем, что сервер возвращает URL аудиофайла
-                    await tts_manager.broadcast(audio_url)
+                    audio_url = tts_response.json().get("url")  # Извлекаем URL из JSON
+                    if audio_url:
+                        await tts_manager.broadcast(audio_url)  # Передаём URL на WebSocket
+                    else:
+                        print("TTS response does not contain 'url'")
+                else:
+                    print(f"TTS server returned an error: {tts_response.status_code}")
             except Exception as e:
                 print(f"Error sending to TTS: {e}")
 
@@ -160,4 +165,3 @@ async def ai_websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if user_id in dialogue_history:
             del dialogue_history[user_id]
-
