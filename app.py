@@ -32,7 +32,7 @@ def get_placeholder_response():
     return random.choice(placeholder_responses)
 
 # TTS server URL
-TTS_SERVER_URL = "tacotrontts-production.up.railway.app/generate"
+TTS_SERVER_URL = "http://your-tts-server-url:5000/generate"
 
 # Clean text for TTS
 def clean_text_for_tts(text):
@@ -50,19 +50,17 @@ def clean_text_for_tts(text):
 # Send text to TTS server
 def send_to_tts(text):
     try:
-        print(f"Sending text to TTS: {text}")
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
-        print(f"TTS Response: {response.status_code}, {response.text}")
-        if response.status_code == 200:
-            data = response.json()
-            audio_url = data.get("audio_url", "")
-            print(f"Extracted audio_url: {audio_url}")
-            return audio_url
-        else:
-            print(f"TTS server error: {response.status_code}")
-            return ""
+        clean_text = clean_text_for_tts(text)  # Очищаем текст
+        print(f"[DEBUG] Cleaned text for TTS: {clean_text}")  # Логируем очищенный текст
+        response = requests.post(TTS_SERVER_URL, json={"text": clean_text}, timeout=60)  # Увеличено время ожидания до 60 секунд
+        print(f"[DEBUG] TTS server status code: {response.status_code}")  # Логируем статус ответа
+        print(f"[DEBUG] TTS server response body: {response.text}")  # Логируем тело ответа
+
+        response.raise_for_status()  # Поднимаем исключение, если HTTP-код ошибки
+        data = response.json()  # Предполагаем, что сервер возвращает JSON
+        return data.get("url", "")  # Получаем ссылку на аудиофайл
     except Exception as e:
-        print(f"Error sending to TTS: {e}")
+        print(f"[ERROR] Error sending to TTS: {e}")
         return ""
 
 # Function to generate ShrokAI's response
