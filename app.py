@@ -123,7 +123,6 @@ latest_audio = {"audio_url": "", "timestamp": 0}
 async def websocket_endpoint(websocket: WebSocket):
     global latest_audio  # Используем глобальную переменную
     user_id = None
-    start_time = None
     await websocket.accept()
     try:
         # Send the latest audio to the newly connected client
@@ -141,7 +140,6 @@ async def websocket_endpoint(websocket: WebSocket):
             dialogue_history[user_id].append(f"User: {data}")
 
             if len(data) > 500:
-                response = "Message is too long. Please send a shorter message."
                 audio_url = ""
             elif "gnome" in data.lower():
                 response = get_gnome_story()
@@ -162,9 +160,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 print(f"Error in TTS integration: {e}")
                 audio_url = ""
 
-            timestamp = time.time() - start_time if start_time else 0
-            latest_audio = {"audio_url": audio_url, "timestamp": timestamp}
-            await websocket.send_json({"audio_url": audio_url, "timestamp": latest_audio["timestamp"]})
+            timestamp = latest_audio["timestamp"]
+            await websocket.send_json({"audio_url": audio_url, "timestamp": timestamp})
             print(f"Sent to client: audio_url={audio_url}, timestamp={timestamp}")
 
     except WebSocketDisconnect:
@@ -178,4 +175,5 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
 
