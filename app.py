@@ -55,6 +55,7 @@ def send_to_tts(text):
         response = requests.post(TTS_SERVER_URL, json={"text": clean_text})
         response.raise_for_status()
         data = response.json()
+        print(f"[DEBUG] TTS response: {data}")  # Логируем полный ответ от TTS
         return data.get("url", "")
     except Exception as e:
         print(f"Error sending to TTS: {e}")
