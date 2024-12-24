@@ -163,9 +163,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 audio_url = ""
 
             timestamp = time.time() - start_time if start_time else 0
-            dialogue_history[user_id].append(f"ShrokAI: {response}")
-            await websocket.send_json({"text": response, "audio_url": audio_url, "timestamp": latest_audio["timestamp"]})
-            print(f"Sent to client: text={response}, audio_url={audio_url}, timestamp={timestamp}")
+            latest_audio = {"audio_url": audio_url, "timestamp": timestamp}
+            await websocket.send_json({"audio_url": audio_url, "timestamp": latest_audio["timestamp"]})
+            print(f"Sent to client: audio_url={audio_url}, timestamp={timestamp}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
@@ -178,3 +178,4 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
