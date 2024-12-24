@@ -32,7 +32,7 @@ def get_placeholder_response():
     return random.choice(placeholder_responses)
 
 # TTS server URL
-TTS_SERVER_URL = "http://your-tts-server-url:5000/generate"
+TTS_SERVER_URL = "tacotrontts-production.up.railway.app/generate"
 
 # Clean text for TTS
 def clean_text_for_tts(text):
