@@ -57,12 +57,13 @@ def get_crypto_response():
     ]
     return random.choice(crypto_responses)
 
-def generate_shrokai_response(user_input, history):
-    # Character description for prompt
-    character_description = """
-    You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor. Your answers are short, fun, and engaging.
-    """
+# Character description for prompt
+character_description = """
+You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor. Your answers are short, fun, and engaging.
+"""
 
+# Function to generate ShrokAI's response
+def generate_shrokai_response(user_input, history):
     # Combine history with the current user input
     history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
     prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
