@@ -53,12 +53,14 @@ def send_to_tts(text):
         clean_text = clean_text_for_tts(text)  # Очищаем текст
         print(f"[DEBUG] Cleaned text for TTS: {clean_text}")  # Логируем очищенный текст
         response = requests.post(TTS_SERVER_URL, json={"text": clean_text})
-        response.raise_for_status()
-        data = response.json()
-        print(f"[DEBUG] TTS response: {data}")  # Логируем полный ответ от TTS
-        return data.get("url", "")
+        print(f"[DEBUG] TTS server status code: {response.status_code}")  # Логируем статус ответа
+        print(f"[DEBUG] TTS server response body: {response.text}")  # Логируем тело ответа
+        
+        response.raise_for_status()  # Поднимаем исключение, если HTTP-код ошибки
+        data = response.json()  # Предполагаем, что сервер возвращает JSON
+        return data.get("url", "")  # Получаем ссылку на аудиофайл
     except Exception as e:
-        print(f"Error sending to TTS: {e}")
+        print(f"[ERROR] Error sending to TTS: {e}")
         return ""
 
 # Function to generate ShrokAI's response
