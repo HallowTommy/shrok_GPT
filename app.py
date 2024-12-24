@@ -71,8 +71,7 @@ def generate_shrokai_response(user_input, history):
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     response = response.split("ShrokAI:")[-1].strip()
-    if len(response) > 100:
-        response = response[:97] + "..."
+    response = response[:50]  # Limit response to 50 characters
     return response
 
 # WebSocket endpoint for client interaction
