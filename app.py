@@ -4,7 +4,6 @@ import torch
 import random
 import requests
 import time
-import asyncio
 
 # Initialize FastAPI
 app = FastAPI()
@@ -17,9 +16,6 @@ if tokenizer.pad_token is None:
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
-
-# Dialogue history
-dialogue_history = {}
 
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
@@ -64,40 +60,32 @@ You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You 
 """
 
 # Function to generate ShrokAI's response
-def generate_shrokai_response(user_input, history):
-    # Combine history with the current user input
-    history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
-    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
+def generate_shrokai_response(user_input):
+    prompt = f"{character_description}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=50,  # Limit generated response to 50 tokens
+        max_new_tokens=50,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
-        do_sample=True,  # Enable sampling
+        do_sample=True,
         temperature=0.7,
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     response = response.split("ShrokAI:")[-1].strip()
-    if len(response) > 100:  # Truncate response if too long
-        response = response[:97] + "..."
-    return response
+    return response if response else get_placeholder_response()
 
 # Function to send text to TTS and get audio URL
 def send_to_tts(text):
     try:
-        print(f"Sending text to TTS: {text}")  # Log text
         response = requests.post(TTS_SERVER_URL, json={"text": text})
-        print(f"TTS Response: {response.status_code}, {response.text}")  # Log response
         if response.status_code == 200:
             data = response.json()
-            audio_url = data.get("audio_url", "")
-            print(f"Extracted audio_url: {audio_url}")  # Log audio_url
-            return audio_url
+            return data.get("audio_url", "")
         else:
             print(f"TTS server error: {response.status_code}")
             return ""
@@ -105,81 +93,42 @@ def send_to_tts(text):
         print(f"Error sending to TTS: {e}")
         return ""
 
-# Function to delete audio file after delivery with delay
-def schedule_file_deletion(audio_url):
-    async def delete_after_delay():
-        await asyncio.sleep(300)  # Wait for 5 minutes
-        try:
-            response = requests.post(TTS_DELETE_URL, json={"file_path": audio_url})
-            if response.status_code == 200:
-                print("Audio file deleted successfully.")
-            else:
-                print(f"Failed to delete audio file: {response.status_code}")
-        except Exception as e:
-            print(f"Error deleting audio file: {e}")
-
-    asyncio.create_task(delete_after_delay())
-
-# Global storage for the latest audio URL and timestamp
-latest_audio = {"audio_url": "", "timestamp": 0}
-
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    global latest_audio  # Use global variable
-    user_id = None
     await websocket.accept()
     try:
-        # Send the latest audio to the newly connected client
-        if latest_audio["audio_url"]:
-            await websocket.send_json(latest_audio)
+        latest_audio_url = ""  # Stores the latest audio URL
 
         while True:
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            if user_id is None:
-                user_id = id(websocket)
-                dialogue_history[user_id] = []
-
-            dialogue_history[user_id].append(f"User: {data}")
-
-            if len(data) > 500:
-                audio_url = ""
-            elif "gnome" in data.lower():
+            if "gnome" in data.lower():
                 response = get_gnome_story()
             elif "crypto" in data.lower():
                 response = get_crypto_response()
             else:
-                response = generate_shrokai_response(data, dialogue_history[user_id])
-                if len(response) < 10:
-                    response = get_placeholder_response()
+                response = generate_shrokai_response(data)
 
             try:
                 audio_url = send_to_tts(response)
                 if audio_url:
-                    latest_audio = {"audio_url": audio_url, "timestamp": time.time()}
-                    schedule_file_deletion(audio_url)  # Schedule file deletion
+                    latest_audio_url = audio_url
+                    await websocket.send_json({"audio_url": audio_url})
+                    print(f"Sent audio URL: {audio_url}")
                 else:
                     print("No audio_url received from TTS.")
             except Exception as e:
                 print(f"Error in TTS integration: {e}")
-                audio_url = ""
 
-            timestamp = latest_audio["timestamp"]
-            await websocket.send_json({"audio_url": audio_url, "timestamp": timestamp})
-            print(f"Sent to client: audio_url={audio_url}, timestamp={timestamp}")
+            # Send the latest audio to newly connected clients
+            if latest_audio_url:
+                await websocket.send_json({"audio_url": latest_audio_url})
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
-        if user_id in dialogue_history:
-            del dialogue_history[user_id]
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
-
 
