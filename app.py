@@ -4,6 +4,7 @@ import torch
 import random
 import requests
 import time
+import asyncio
 
 # Initialize FastAPI
 app = FastAPI()
@@ -89,13 +90,13 @@ def generate_shrokai_response(user_input, history):
 # Function to send text to TTS and get audio URL
 def send_to_tts(text):
     try:
-        print(f"Sending text to TTS: {text}")  # Лог текста
+        print(f"Sending text to TTS: {text}")  # Log text
         response = requests.post(TTS_SERVER_URL, json={"text": text})
-        print(f"TTS Response: {response.status_code}, {response.text}")  # Логи ответа
+        print(f"TTS Response: {response.status_code}, {response.text}")  # Log response
         if response.status_code == 200:
             data = response.json()
             audio_url = data.get("audio_url", "")
-            print(f"Extracted audio_url: {audio_url}")  # Лог audio_url
+            print(f"Extracted audio_url: {audio_url}")  # Log audio_url
             return audio_url
         else:
             print(f"TTS server error: {response.status_code}")
@@ -104,16 +105,20 @@ def send_to_tts(text):
         print(f"Error sending to TTS: {e}")
         return ""
 
-# Function to delete audio file after delivery
-def delete_audio_file(audio_url):
-    try:
-        response = requests.post(TTS_DELETE_URL, json={"file_path": audio_url})
-        if response.status_code == 200:
-            print("Audio file deleted successfully.")
-        else:
-            print(f"Failed to delete audio file: {response.status_code}")
-    except Exception as e:
-        print(f"Error deleting audio file: {e}")
+# Function to delete audio file after delivery with delay
+def schedule_file_deletion(audio_url):
+    async def delete_after_delay():
+        await asyncio.sleep(300)  # Wait for 5 minutes
+        try:
+            response = requests.post(TTS_DELETE_URL, json={"file_path": audio_url})
+            if response.status_code == 200:
+                print("Audio file deleted successfully.")
+            else:
+                print(f"Failed to delete audio file: {response.status_code}")
+        except Exception as e:
+            print(f"Error deleting audio file: {e}")
+
+    asyncio.create_task(delete_after_delay())
 
 # Global storage for the latest audio URL and timestamp
 latest_audio = {"audio_url": "", "timestamp": 0}
@@ -121,7 +126,7 @@ latest_audio = {"audio_url": "", "timestamp": 0}
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    global latest_audio  # Используем глобальную переменную
+    global latest_audio  # Use global variable
     user_id = None
     await websocket.accept()
     try:
@@ -154,6 +159,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 audio_url = send_to_tts(response)
                 if audio_url:
                     latest_audio = {"audio_url": audio_url, "timestamp": time.time()}
+                    schedule_file_deletion(audio_url)  # Schedule file deletion
                 else:
                     print("No audio_url received from TTS.")
             except Exception as e:
