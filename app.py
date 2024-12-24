@@ -52,10 +52,10 @@ def send_to_tts(text):
     try:
         clean_text = clean_text_for_tts(text)  # Очищаем текст
         print(f"[DEBUG] Cleaned text for TTS: {clean_text}")  # Логируем очищенный текст
-        response = requests.post(TTS_SERVER_URL, json={"text": clean_text})
+        response = requests.post(TTS_SERVER_URL, json={"text": clean_text}, timeout=60)  # Увеличено время ожидания
         print(f"[DEBUG] TTS server status code: {response.status_code}")  # Логируем статус ответа
         print(f"[DEBUG] TTS server response body: {response.text}")  # Логируем тело ответа
-        
+
         response.raise_for_status()  # Поднимаем исключение, если HTTP-код ошибки
         data = response.json()  # Предполагаем, что сервер возвращает JSON
         return data.get("url", "")  # Получаем ссылку на аудиофайл
