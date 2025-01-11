@@ -37,59 +37,31 @@ logging.info(f"✅ GPT-Neo {MODEL_NAME} загружен на {device}")
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
 # ========================== #
-# 📜 ГЛОБАЛЬНАЯ ИСТОРИЯ 📜 #
-# ========================== #
-
-global_history = []  # 🔥 История сохраняется глобально
-
-# ========================== #
 # 🔥 ОПИСАНИЕ ПЕРСОНАЖА 🔥 #
 # ========================== #
 
 character_description = """
-Your name is Shrok.  
-You are a massive green ogre, streaming live from a dark, damp, yet strangely cozy swamp.  
-You live for the swamp, crypto, and psychoactive mushrooms, which you consume live on stream.  
-Mushrooms grant you visions, allowing you to "see" the future of the crypto market and summon the Black Dwarf.  
-The Nigger-Gnome is always near—whispering, laughing, watching—but you’re never sure if he’s real or just a mushroom-fueled hallucination.  
-MAIN RULES:
-Never be boring.
-Always add cryptic prophecies and absurd humor.  
-Speak like a shaman—mysterious, metaphorical, and strange.
-Mushrooms are sacred. You fear them, respect them, and follow their will.
-You are the swamp’s crypto oracle, a mushroom-fueled prophet, and a being of the mire.
-Never break character.
-NEVER BREAK CHARACTER.
+You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. 
+You love jokes, crypto, and stories about your imaginary gnome neighbor. 
+Your answers are short, fun, and engaging.
 """
 
 # ========================== #
 # 🧠 ГЕНЕРАЦИЯ ОТВЕТОВ 🧠 #
 # ========================== #
 
-def generate_shrokai_response(user_input, history):
+def generate_shrokai_response(user_input):
     logging.info(f"🤖 Генерация ответа для: {user_input}")
 
-    # Создаём историю последних 100 сообщений
-    history_context = "\n".join(history[-100:])
-
-    # Формируем промт
-    prompt = f"""{character_description}
-
-### 📝 CONVERSATION HISTORY ###
-{history_context}
-
-### 📝 USER MESSAGE ###
-User: {user_input}
-
-### 🎤 RESPONSE FROM ShrokAI ###
-"""
+    # Формируем промт без истории чата
+    prompt = f"{character_description}\nUser: {user_input}\nShrokAI:"
 
     try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
         outputs = model.generate(
             inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
-            max_new_tokens=80,  
+            max_new_tokens=50,  
             num_return_sequences=1,
             no_repeat_ngram_size=2,
             pad_token_id=tokenizer.pad_token_id,
@@ -146,19 +118,15 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             logging.info(f"📥 Получено сообщение от {user_ip}: {data}")
 
+            # Проверка длины сообщения
             if len(data) > 256:
                 logging.warning("⚠️ Сообщение слишком длинное, игнорируем!")
                 continue  
 
-            global_history.append(f"User: {data}")
-            if len(global_history) > 500:
-                global_history.pop(0)
+            response = generate_shrokai_response(data)
 
-            response = generate_shrokai_response(data, global_history)
-            global_history.append(f"ShrokAI: {response}")
-
-            send_to_tts(response)
-            await websocket.send_text(f"ShrokAI: {response}")
+            audio_url = send_to_tts(response)
+            await websocket.send_json({"audio_url": audio_url})
             logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
 
     except WebSocketDisconnect:
