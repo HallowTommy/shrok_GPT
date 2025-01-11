@@ -66,36 +66,24 @@ You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You 
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
-    history_context = "\n".join(history[-10:])  # Используем только последние 6 ответов ИИ
-
-    # Динамическая инструкция
-    context_instruction = ""
-    if "gnome" in history_context:
-        context_instruction = "You are talking about the mysterious gnome that only you can see."
-    elif "crypto" in history_context:
-        context_instruction = "You are discussing cryptocurrency with your audience."
-    elif "mushroom" in history_context:
-        context_instruction = "You just ate a mysterious swamp mushroom and feel weird."
-
-    prompt = f"{character_description}\n{context_instruction}\n{history_context}\nUser: {user_input}\nShrokAI:"
-    
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+    history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
+    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
         max_new_tokens=50,
         num_return_sequences=1,
-        no_repeat_ngram_size=3,
+        no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.6,
-        top_p=0.85
+        temperature=0.7,
+        top_p=0.9
     )
-
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     response = response.split("ShrokAI:")[-1].strip()
-    
+
     return response
 
 # Function to send text to TTS
@@ -126,6 +114,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_id = id(websocket)
                 dialogue_history[user_id] = []
 
+            dialogue_history[user_id].append(f"User: {data}")
+
             if len(data) > 500:
                 response = "Input too long, try a shorter message."
             elif "gnome" in data.lower():
@@ -136,8 +126,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 response = generate_shrokai_response(data, dialogue_history[user_id])
                 if len(response) < 10:
                     response = get_placeholder_response()
-                
-            dialogue_history[user_id].append(response)  # Сохраняем только ответы ИИ
+            
             send_to_tts(response)  # Send response to TTS but do not return audio URL
             
             await websocket.send_text(response)
