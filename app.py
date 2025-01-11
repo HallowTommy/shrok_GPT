@@ -53,29 +53,26 @@ You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard S
 def generate_shrokai_response(user_input):
     logging.info(f"🤖 Генерация ответа для: {user_input}")
 
-    # Формируем промт без истории чата
-    prompt = f"{character_description}\nUser: {user_input}\nShrokAI:"
+    # Прямой промпт без фильтров
+    prompt = f"{character_description}\n\nUser: {user_input}\nShrokAI:"
 
-    try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
-        outputs = model.generate(
-            inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            max_new_tokens=50,  
-            num_return_sequences=1,
-            no_repeat_ngram_size=2,
-            pad_token_id=tokenizer.pad_token_id,
-            do_sample=True,
-            temperature=0.7,  
-            top_p=0.9  
-        )
-        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response = response.replace("ShrokAI:", "").strip()  # Убираем лишние упоминания
-        logging.info(f"✅ Ответ ShrokAI: {response}")
-        return response
-    except Exception as e:
-        logging.error(f"❌ Ошибка генерации ответа: {e}")
-        return "The swamp is silent... something went wrong."
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
+
+    outputs = model.generate(
+        inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
+        max_new_tokens=80,  
+        num_return_sequences=1,
+        no_repeat_ngram_size=2,
+        pad_token_id=tokenizer.pad_token_id,
+        do_sample=True,
+        temperature=0.9,  
+        top_p=0.9  
+    )
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+
+    logging.info(f"✅ Итоговый ответ ShrokAI: {response}")
+    return response
 
 # ========================== #
 # 🎤 ОТПРАВКА В TTS 🎤 #
@@ -118,14 +115,9 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             logging.info(f"📥 Получено сообщение от {user_ip}: {data}")
 
-            # Проверка длины сообщения
-            if len(data) > 256:
-                logging.warning("⚠️ Сообщение слишком длинное, игнорируем!")
-                continue  
-
             response = generate_shrokai_response(data)
-
             audio_url = send_to_tts(response)
+
             await websocket.send_json({"audio_url": audio_url})
             logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
 
