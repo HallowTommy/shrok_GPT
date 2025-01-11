@@ -77,8 +77,7 @@ def generate_shrokai_response(user_input, history):
     elif "mushroom" in history_context:
         context_instruction = "You just ate a mysterious swamp mushroom and feel weird."
 
-    prompt = f"{character_description}\n{context_instruction}\n
-{history_context}\nUser: {user_input}\nShrokAI:"
+    prompt = f"{character_description}\n{context_instruction}\n{history_context}\nUser: {user_input}\nShrokAI:"
     
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
 
