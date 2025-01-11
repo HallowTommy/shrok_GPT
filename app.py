@@ -23,6 +23,9 @@ dialogue_history = {}
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
+# Welcome message
+WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
+
 # Placeholder responses
 def get_placeholder_response():
     placeholder_responses = [
@@ -99,6 +102,10 @@ def send_to_tts(text):
 async def websocket_endpoint(websocket: WebSocket):
     user_id = None
     await websocket.accept()
+    
+    # Send welcome message to new user
+    await websocket.send_text(WELCOME_MESSAGE)
+    
     try:
         while True:
             data = await websocket.receive_text()
