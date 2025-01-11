@@ -3,7 +3,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
-import time
 
 # ========================== #
 # 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВЕРА 🔥 #
@@ -54,8 +53,14 @@ You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard S
 def generate_shrokai_response(user_input):
     logging.info(f"🤖 Генерация ответа для: {user_input}")
 
-    # Прямой промпт без фильтров
-    prompt = f"{character_description}\n\nUser: {user_input}\nShrokAI:"
+    # Формируем промпт с четким разделением
+    prompt = f"""{character_description}
+
+### USER INPUT ###
+{user_input}
+
+### RESPONSE ###
+"""
 
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
@@ -71,6 +76,11 @@ def generate_shrokai_response(user_input):
         top_p=0.9  
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+
+    # 🔥 Очищаем ответ перед отправкой в TTS и пользователю
+    response = response.replace(prompt, "").strip()  # Удаляем весь промпт
+    response = response.replace("### RESPONSE ###", "").strip()  # Удаляем тег
+    response = response.replace("ShrokAI:", "").strip()  # Удаляем лишнее упоминание
 
     logging.info(f"✅ Итоговый ответ ShrokAI: {response}")
     return response
@@ -116,11 +126,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
             response = generate_shrokai_response(data)
 
-            # ✅ Сначала отправляем текст в TTS
+            # ✅ Отправляем текст в TTS перед тем, как отправить пользователю
             tts_success = send_to_tts(response)
 
             if tts_success:
-                # ✅ Только после успешного создания аудиофайла отправляем текст пользователю
+                # ✅ Отправляем текст пользователю после успешной генерации аудио
                 await websocket.send_text(f"ShrokAI: {response}")
                 logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
             else:
