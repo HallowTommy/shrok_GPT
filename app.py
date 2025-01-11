@@ -67,7 +67,7 @@ def generate_shrokai_response(user_input):
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=80,  
+        max_new_tokens=25,  
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
