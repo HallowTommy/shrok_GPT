@@ -2,7 +2,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
-import time
 
 # Initialize FastAPI
 app = FastAPI()
@@ -21,7 +20,6 @@ dialogue_history = {}
 
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
-TTS_DELETE_URL = "https://tacotrontts-production.up.railway.app/delete"
 
 # Character description for prompt
 character_description = """
@@ -111,6 +109,12 @@ async def websocket_endpoint(websocket: WebSocket):
     user_id = None
     await websocket.accept()
     try:
+        # Кастомное приветственное сообщение
+        welcome_message = "Address me as @ShrokAI and type your message so I can hear you."
+        audio_url = send_to_tts(welcome_message)  # Отправляем в TTS, но НЕ показываем в чате
+
+        await websocket.send_text(f"ShrokAI: {welcome_message}")  # Отправляем чистый текст
+
         while True:
             data = await websocket.receive_text()
             print(f"Received: {data}")
@@ -126,7 +130,9 @@ async def websocket_endpoint(websocket: WebSocket):
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
 
-            await websocket.send_json({"response": response})
+            audio_url = send_to_tts(response)  # Отправляем в TTS, но НЕ показываем в чате
+
+            await websocket.send_text(f"ShrokAI: {response}")  # Отправляем чистый текстовый ответ
             print(f"Sent to client: {response}")
 
     except WebSocketDisconnect:
