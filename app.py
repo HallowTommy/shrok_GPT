@@ -83,8 +83,7 @@ def generate_shrokai_response(user_input, history):
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     response = response.split("ShrokAI:")[-1].strip()
-    if len(response) > 100:
-        response = response[:97] + "..."
+
     return response
 
 # Function to send text to TTS
