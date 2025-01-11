@@ -66,7 +66,7 @@ You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You 
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
-    history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
+    history_context = "\n".join(history[-10:])  # Include up to the last 3 exchanges for context
     prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
