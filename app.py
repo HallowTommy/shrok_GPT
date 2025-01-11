@@ -142,7 +142,7 @@ async def websocket_endpoint(websocket: WebSocket):
             send_to_tts(response)
 
             # Отправляем текст пользователю
-            await websocket.send_text(f"ShrokAI: {response}")
+            await websocket.send_text(f"{response}")
             logging.info(f"📩 Ответ отправлен пользователю: {response}")
 
     except WebSocketDisconnect:
