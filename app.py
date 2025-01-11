@@ -66,14 +66,14 @@ You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You 
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
-    history_context = "\n".join(history[-10:])  # Include up to the last 3 exchanges for context
+    history_context = "\n".join(history[-20:])
     prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=50,
+        max_new_tokens=100,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
@@ -116,7 +116,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             dialogue_history[user_id].append(f"User: {data}")
 
-            if len(data) > 500:
+            if len(data) > 256:
                 response = "Input too long, try a shorter message."
             elif "gnome" in data.lower():
                 response = get_gnome_story()
