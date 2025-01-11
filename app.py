@@ -66,7 +66,7 @@ def generate_shrokai_response(user_input):
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.9,  
+        temperature=0.7,  
         top_p=0.9  
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
