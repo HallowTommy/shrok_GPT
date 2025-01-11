@@ -20,6 +20,9 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 # Dialogue history
 dialogue_history = {}
 
+# TTS Server URL
+TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
+
 # Placeholder responses
 def get_placeholder_response():
     placeholder_responses = [
@@ -81,6 +84,16 @@ def generate_shrokai_response(user_input, history):
         response = response[:97] + "..."
     return response
 
+# Function to send text to TTS
+def send_to_tts(text):
+    try:
+        response = requests.post(TTS_SERVER_URL, json={"text": text})
+        if response.status_code == 200:
+            return response.json().get("audio_url", "")
+    except Exception as e:
+        print(f"Error sending to TTS: {e}")
+    return ""
+
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -107,9 +120,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 response = generate_shrokai_response(data, dialogue_history[user_id])
                 if len(response) < 10:
                     response = get_placeholder_response()
-
-            await websocket.send_json({"text": response})
-            print(f"Sent to client: text={response}")
+            
+            send_to_tts(response)  # Send response to TTS but do not return audio URL
+            
+            await websocket.send_text(response)
+            print(f"Sent to client: {response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
