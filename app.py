@@ -82,7 +82,7 @@ def generate_shrokai_response(user_input, history):
 User: {user_input}
 
 ### 🎤 RESPONSE FROM ShrokAI ###
-ShrokAI:"""
+"""
 
     try:
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
@@ -94,11 +94,11 @@ ShrokAI:"""
             no_repeat_ngram_size=2,
             pad_token_id=tokenizer.pad_token_id,
             do_sample=True,
-            temperature=0.9,  
+            temperature=0.7,  
             top_p=0.9  
         )
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response = response.split("ShrokAI:")[-1].strip()
+        response = response.replace("ShrokAI:", "").strip()  # Убираем лишние упоминания
         logging.info(f"✅ Ответ ShrokAI: {response}")
         return response
     except Exception as e:
