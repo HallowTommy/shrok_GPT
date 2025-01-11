@@ -1,153 +1,124 @@
-import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+import random
 import requests
+import time
 
-# ========================== #
-# 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВЕРА 🔥 #
-# ========================== #
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Запускаем FastAPI
+# Initialize FastAPI
 app = FastAPI()
 
-logging.info("🚀 FastAPI сервер запущен!")
-
-# ========================== #
-# 🤖 ЗАГРУЗКА GPT-МОДЕЛИ 🤖 #
-# ========================== #
-
+# Load GPT-Neo Model
 MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token  # Устанавливаем pad_token
+    tokenizer.pad_token = tokenizer.eos_token  # Set pad_token as eos_token
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
-logging.info(f"✅ GPT-Neo {MODEL_NAME} загружен на {device}")
+# Dialogue history
+dialogue_history = {}
 
-# ========================== #
-# 🔊 НАСТРОЙКА TTS 🔊 #
-# ========================== #
+# Placeholder responses
+def get_placeholder_response():
+    placeholder_responses = [
+        "Hmm, let me think!",
+        "Oh, that’s tricky!",
+        "Swamp brain lagging!",
+        "Let me process that!",
+        "Quack! Need a moment!"
+    ]
+    return random.choice(placeholder_responses)
 
-TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
+# Stories about the mysterious gnome
+def get_gnome_story():
+    gnome_stories = [
+        "The gnome? He danced on lilies yesterday!",
+        "Oh, that gnome! He’s my swamp ghost.",
+        "The gnome stole my mushrooms again!",
+        "He’s tiny but causes big trouble!",
+        "My gnome? Just a figment of my swampy mind."
+    ]
+    return random.choice(gnome_stories)
 
-# ========================== #
-# 🔥 ОПИСАНИЕ ПЕРСОНАЖА 🔥 #
-# ========================== #
+# Responses about cryptocurrency
+def get_crypto_response():
+    crypto_responses = [
+        "Solana is like my swamp: fast but slippery!",
+        "Memecoins? Frogs of the crypto world!",
+        "SwampCoin is my treasure chest!",
+        "Crypto is like mud: messy but fun!",
+        "SOL keeps my swamp glowing!"
+    ]
+    return random.choice(crypto_responses)
 
+# Character description for prompt
 character_description = """
-Your name is Shrok, a green ogre streamer obsessed with psychoactive mushrooms.
-They grant you visions of the crypto market’s future and summon the niger gnome.
-You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard Solana enthusiast.
+You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor. Your answers are short, fun, and engaging.
 """
 
-# ========================== #
-# 🧠 ГЕНЕРАЦИЯ ОТВЕТОВ 🧠 #
-# ========================== #
-
-def generate_shrokai_response(user_input):
-    logging.info(f"🤖 Генерация ответа для: {user_input}")
-
-    # Формируем промпт с четким разделением
-    prompt = f"""{character_description}
-
-### USER INPUT ###
-{user_input}
-
-### RESPONSE ###
-"""
-
+# Function to generate ShrokAI's response
+def generate_shrokai_response(user_input, history):
+    history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
+    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=20,  
+        max_new_tokens=50,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.9,  
-        top_p=0.9  
+        temperature=0.7,
+        top_p=0.9
     )
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
-
-    # 🔥 Очищаем ответ перед отправкой в TTS и пользователю
-    response = response.replace(prompt, "").strip()  # Удаляем весь промпт
-    response = response.replace("### RESPONSE ###", "").strip()  # Удаляем тег
-    response = response.replace("ShrokAI:", "").strip()  # Удаляем лишнее упоминание
-
-    logging.info(f"✅ Итоговый ответ ShrokAI: {response}")
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response = response.split("ShrokAI:")[-1].strip()
+    if len(response) > 100:
+        response = response[:97] + "..."
     return response
 
-# ========================== #
-# 🎤 ОТПРАВКА В TTS 🎤 #
-# ========================== #
-
-def send_to_tts(text):
-    logging.info(f"🔊 Отправка текста в TTS: {text}")
-
-    try:
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
-        if response.status_code == 200:
-            logging.info("✅ Аудио успешно сгенерировано")
-            return True  # Подтверждаем успешное создание аудио
-        else:
-            logging.error(f"❌ Ошибка TTS: {response.status_code}, {response.text}")
-            return False
-    except Exception as e:
-        logging.error(f"❌ Ошибка при отправке в TTS: {e}")
-        return False
-
-# ========================== #
-# 🌐 WEBSOCKET ЭНДПОИНТ 🌐 #
-# ========================== #
-
+# WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
+    user_id = None
     await websocket.accept()
-
-    user_ip = websocket.client.host
-    logging.info(f"🌍 Новый пользователь подключился! IP: {user_ip}")
-
     try:
-        welcome_message = "Address me as @ShrokAI and type your message so I can hear you."
-        await websocket.send_text(f"ShrokAI: {welcome_message}")
-        logging.info(f"📩 Отправлено приветствие пользователю ({user_ip}): {welcome_message}")
-
         while True:
             data = await websocket.receive_text()
-            logging.info(f"📥 Получено сообщение от {user_ip}: {data}")
+            print(f"Received: {data}")
 
-            response = generate_shrokai_response(data)
+            if user_id is None:
+                user_id = id(websocket)
+                dialogue_history[user_id] = []
 
-            # ✅ Отправляем текст в TTS перед тем, как отправить пользователю
-            tts_success = send_to_tts(response)
+            dialogue_history[user_id].append(f"User: {data}")
 
-            if tts_success:
-                # ✅ Отправляем текст пользователю после успешной генерации аудио
-                await websocket.send_text(f"ShrokAI: {response}")
-                logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
+            if len(data) > 500:
+                response = "Input too long, try a shorter message."
+            elif "gnome" in data.lower():
+                response = get_gnome_story()
+            elif "crypto" in data.lower():
+                response = get_crypto_response()
             else:
-                logging.error("❌ Ошибка генерации аудио, текст не отправлен пользователю.")
+                response = generate_shrokai_response(data, dialogue_history[user_id])
+                if len(response) < 10:
+                    response = get_placeholder_response()
+
+            await websocket.send_json({"text": response})
+            print(f"Sent to client: text={response}")
 
     except WebSocketDisconnect:
-        logging.info(f"❌ Пользователь ({user_ip}) отключился.")
-
+        print("WebSocket disconnected")
+        if user_id in dialogue_history:
+            del dialogue_history[user_id]
     except Exception as e:
-        logging.error(f"❌ Ошибка в WebSocket у {user_ip}: {e}")
+        print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
-
-# ========================== #
-# 🚀 ЗАПУСК СЕРВЕРА 🚀 #
-# ========================== #
 
 if __name__ == "__main__":
     import uvicorn
-    logging.info("🔥 Запуск FastAPI сервера...")
     uvicorn.run(app, host="0.0.0.0", port=8080)
