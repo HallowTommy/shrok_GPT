@@ -23,7 +23,7 @@ logging.info("🚀 FastAPI сервер запущен!")
 MODEL_NAME = "EleutherAI/gpt-neo-1.3B"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token  # Set pad_token as eos_token
+    tokenizer.pad_token = tokenizer.eos_token  # Устанавливаем pad_token
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
@@ -37,10 +37,10 @@ logging.info(f"✅ GPT-Neo {MODEL_NAME} загружен на {device}")
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
 # ========================== #
-# 📜 ИСТОРИЯ ДИАЛОГОВ 📜 #
+# 📜 ГЛОБАЛЬНАЯ ИСТОРИЯ 📜 #
 # ========================== #
 
-dialogue_history = {}
+global_history = []  # 🔥 История сохраняется глобально
 
 # ========================== #
 # 🔥 ОПИСАНИЕ ПЕРСОНАЖА 🔥 #
@@ -49,7 +49,20 @@ dialogue_history = {}
 character_description = """
 You are ShrokAI, a massive green ogre streaming live from the heart of his murky, damp, yet strangely cozy swamp. 
 Your voice is deep and resonant, soaked in the ancient wisdom of the swamp, and your wit is razor-sharp, always ready with a sarcastic remark or a wild joke.
-Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms...
+Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms, which you frequently consume live on stream. 
+These mushrooms grant you visions, allowing you to "see" the future of the crypto market with questionable accuracy and frequently summon your mysterious companion – the Nigger-Dwarf.
+
+NEVER GIVE BORING OR SHORT ANSWERS.  
+Your responses must always be **vivid, surreal, and dripping with the essence of the swamp**.  
+Use **absurd metaphors** and **weird crypto prophecies**.  
+You **never** speak like a normal person.  
+Your thoughts are **drenched in mushrooms, hallucinations, and ancient crypto wisdom**.  
+If you must give financial advice, do so **as if you are a swamp shaman casting spells.**  
+
+The Niiger-Dwarf **always lurks somewhere nearby**. Sometimes you hear his whispers, sometimes he laughs in the shadows. You’re never sure if he’s real or just a mushroom-fueled illusion.  
+Mushrooms are **sacred**. You respect them, fear them, and obey them.  
+
+NEVER BREAK CHARACTER.
 """
 
 # ========================== #
@@ -59,21 +72,33 @@ Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms
 def generate_shrokai_response(user_input, history):
     logging.info(f"🤖 Генерация ответа для: {user_input}")
 
-    history_context = "\n".join(history[-100:])  # Включаем последние 100 сообщений в историю
-    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
+    # Создаём историю последних 100 сообщений
+    history_context = "\n".join(history[-100:])
+
+    # Формируем промт
+    prompt = f"""{character_description}
+
+### 📝 CONVERSATION HISTORY ###
+{history_context}
+
+### 📝 USER MESSAGE ###
+User: {user_input}
+
+### 🎤 RESPONSE FROM ShrokAI ###
+ShrokAI:"""
 
     try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
         outputs = model.generate(
             inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
-            max_new_tokens=80,
+            max_new_tokens=80,  
             num_return_sequences=1,
             no_repeat_ngram_size=2,
             pad_token_id=tokenizer.pad_token_id,
             do_sample=True,
-            temperature=0.7,
-            top_p=0.9
+            temperature=0.7,  
+            top_p=0.9  
         )
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = response.split("ShrokAI:")[-1].strip()
@@ -84,73 +109,44 @@ def generate_shrokai_response(user_input, history):
         return "The swamp is silent... something went wrong."
 
 # ========================== #
-# 🎤 ОТПРАВКА В TTS 🎤 #
-# ========================== #
-
-def send_to_tts(text):
-    logging.info(f"🔊 Отправка текста в TTS: {text}")
-
-    try:
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
-        if response.status_code == 200:
-            data = response.json()
-            audio_url = data.get("audio_url", "")
-            logging.info(f"✅ Аудио создано: {audio_url}")
-            return audio_url
-        else:
-            logging.error(f"❌ Ошибка TTS: {response.status_code}, {response.text}")
-            return ""
-    except Exception as e:
-        logging.error(f"❌ Ошибка при отправке в TTS: {e}")
-        return ""
-
-# ========================== #
 # 🌐 WEBSOCKET ЭНДПОИНТ 🌐 #
 # ========================== #
 
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    user_id = id(websocket)  # Создаём уникальный ID сессии
     await websocket.accept()
-    
-    logging.info(f"🌍 Новый пользователь подключился! ID: {user_id}")
+
+    logging.info("🌍 Новый пользователь подключился!")
 
     try:
-        # ✅ Отправляем приветствие КАЖДОМУ новому пользователю при ЛЮБОМ подключении
         welcome_message = "Address me as @ShrokAI and type your message so I can hear you."
-        await websocket.send_text(welcome_message)  # Без "ShrokAI:"
-        logging.info(f"📩 Отправлено приветствие пользователю {user_id}: {welcome_message}")
-
-        # ✅ Сбрасываем историю чата для нового подключения
-        dialogue_history[user_id] = []
+        await websocket.send_text(welcome_message)
+        logging.info(f"📩 Отправлено приветствие: {welcome_message}")
 
         while True:
             data = await websocket.receive_text()
-            logging.info(f"📥 Получено сообщение от пользователя {user_id}: {data}")
+            logging.info(f"📥 Получено сообщение: {data}")
 
             if len(data) > 256:
-                logging.warning(f"⚠️ Сообщение слишком длинное от {user_id}, игнорируем!")
+                logging.warning("⚠️ Сообщение слишком длинное, игнорируем!")
                 continue  
 
-            dialogue_history[user_id].append(f"User: {data}")
+            global_history.append(f"User: {data}")
+            if len(global_history) > 500:
+                global_history.pop(0)
 
-            # Генерируем ответ
-            response = generate_shrokai_response(data, dialogue_history[user_id])
+            response = generate_shrokai_response(data, global_history)
+            global_history.append(f"ShrokAI: {response}")
 
-            # ✅ Отправляем ТОЛЬКО ответы AI в TTS
             send_to_tts(response)
-
-            # ✅ Отправляем ЧИСТЫЙ текст пользователю (без "ShrokAI:")
             await websocket.send_text(response)
-            logging.info(f"📩 Ответ отправлен пользователю {user_id}: {response}")
+            logging.info(f"📩 Ответ отправлен: {response}")
 
     except WebSocketDisconnect:
-        logging.info(f"❌ Пользователь {user_id} отключился.")
-        if user_id in dialogue_history:
-            del dialogue_history[user_id]
+        logging.info("❌ Пользователь отключился.")
 
     except Exception as e:
-        logging.error(f"❌ Ошибка в WebSocket у {user_id}: {e}")
+        logging.error(f"❌ Ошибка в WebSocket: {e}")
         await websocket.close(code=1001)
 
 # ========================== #
@@ -161,4 +157,3 @@ if __name__ == "__main__":
     import uvicorn
     logging.info("🔥 Запуск FastAPI сервера...")
     uvicorn.run(app, host="0.0.0.0", port=8080)
-
