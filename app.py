@@ -24,17 +24,6 @@ dialogue_history = {}
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 TTS_DELETE_URL = "https://tacotrontts-production.up.railway.app/delete"
 
-# Placeholder responses
-def get_placeholder_response():
-    placeholder_responses = [
-        "Hmm, let me think!",
-        "Oh, that’s tricky!",
-        "Swamp brain lagging!",
-        "Let me process that!",
-        "Quack! Need a moment!"
-    ]
-    return random.choice(placeholder_responses)
-
 # Stories about the mysterious gnome
 def get_gnome_story():
     gnome_stories = [
