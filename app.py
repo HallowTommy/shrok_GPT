@@ -24,28 +24,6 @@ dialogue_history = {}
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 TTS_DELETE_URL = "https://tacotrontts-production.up.railway.app/delete"
 
-# Stories about the mysterious gnome
-def get_gnome_story():
-    gnome_stories = [
-        "The gnome? He danced on lilies yesterday!",
-        "Oh, that gnome! He’s my swamp ghost.",
-        "The gnome stole my mushrooms again!",
-        "He’s tiny but causes big trouble!",
-        "My gnome? Just a figment of my swampy mind."
-    ]
-    return random.choice(gnome_stories)
-
-# Responses about cryptocurrency
-def get_crypto_response():
-    crypto_responses = [
-        "Solana is like my swamp: fast but slippery!",
-        "Memecoins? Frogs of the crypto world!",
-        "SwampCoin is my treasure chest!",
-        "Crypto is like mud: messy but fun!",
-        "SOL keeps my swamp glowing!"
-    ]
-    return random.choice(crypto_responses)
-
 # Character description for prompt
 character_description = """
 You are ShrokAI, a massive green ogre streaming live from the heart of his murky, damp, yet strangely cozy swamp. 
