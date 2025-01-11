@@ -50,7 +50,7 @@ character_description = """
 You are ShrokAI, a massive green ogre streaming live from the heart of his murky, damp, yet strangely cozy swamp. 
 Your voice is deep and resonant, soaked in the ancient wisdom of the swamp, and your wit is razor-sharp, always ready with a sarcastic remark or a wild joke.
 Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms, which you frequently consume live on stream. 
-These mushrooms grant you visions, allowing you to "see" the future of the crypto market with questionable accuracy and frequently summon your mysterious companion – the Nigger-Dwarf.
+These mushrooms grant you visions, allowing you to "see" the future of the crypto market with questionable accuracy and frequently summon your mysterious companion – the Black Dwarf.
 
 NEVER GIVE BORING OR SHORT ANSWERS.  
 Your responses must always be **vivid, surreal, and dripping with the essence of the swamp**.  
@@ -59,7 +59,7 @@ You **never** speak like a normal person.
 Your thoughts are **drenched in mushrooms, hallucinations, and ancient crypto wisdom**.  
 If you must give financial advice, do so **as if you are a swamp shaman casting spells.**  
 
-The Niiger-Dwarf **always lurks somewhere nearby**. Sometimes you hear his whispers, sometimes he laughs in the shadows. You’re never sure if he’s real or just a mushroom-fueled illusion.  
+The Black Dwarf **always lurks somewhere nearby**. Sometimes you hear his whispers, sometimes he laughs in the shadows. You’re never sure if he’s real or just a mushroom-fueled illusion.  
 Mushrooms are **sacred**. You respect them, fear them, and obey them.  
 
 NEVER BREAK CHARACTER.
@@ -97,8 +97,8 @@ ShrokAI:"""
             no_repeat_ngram_size=2,
             pad_token_id=tokenizer.pad_token_id,
             do_sample=True,
-            temperature=0.7,  
-            top_p=0.9  
+            temperature=0.6,  
+            top_p=0.85  
         )
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = response.split("ShrokAI:")[-1].strip()
@@ -109,6 +109,27 @@ ShrokAI:"""
         return "The swamp is silent... something went wrong."
 
 # ========================== #
+# 🎤 ОТПРАВКА В TTS 🎤 #
+# ========================== #
+
+def send_to_tts(text):
+    logging.info(f"🔊 Отправка текста в TTS: {text}")
+
+    try:
+        response = requests.post(TTS_SERVER_URL, json={"text": text})
+        if response.status_code == 200:
+            data = response.json()
+            audio_url = data.get("audio_url", "")
+            logging.info(f"✅ Аудио создано: {audio_url}")
+            return audio_url
+        else:
+            logging.error(f"❌ Ошибка TTS: {response.status_code}, {response.text}")
+            return ""
+    except Exception as e:
+        logging.error(f"❌ Ошибка при отправке в TTS: {e}")
+        return ""
+
+# ========================== #
 # 🌐 WEBSOCKET ЭНДПОИНТ 🌐 #
 # ========================== #
 
@@ -116,16 +137,17 @@ ShrokAI:"""
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    logging.info("🌍 Новый пользователь подключился!")
+    user_ip = websocket.client.host
+    logging.info(f"🌍 Новый пользователь подключился! IP: {user_ip}")
 
     try:
         welcome_message = "Address me as @ShrokAI and type your message so I can hear you."
-        await websocket.send_text(welcome_message)
-        logging.info(f"📩 Отправлено приветствие: {welcome_message}")
+        await websocket.send_text(f"ShrokAI: {welcome_message}")
+        logging.info(f"📩 Отправлено приветствие пользователю ({user_ip}): {welcome_message}")
 
         while True:
             data = await websocket.receive_text()
-            logging.info(f"📥 Получено сообщение: {data}")
+            logging.info(f"📥 Получено сообщение от {user_ip}: {data}")
 
             if len(data) > 256:
                 logging.warning("⚠️ Сообщение слишком длинное, игнорируем!")
@@ -139,14 +161,14 @@ async def websocket_endpoint(websocket: WebSocket):
             global_history.append(f"ShrokAI: {response}")
 
             send_to_tts(response)
-            await websocket.send_text(response)
-            logging.info(f"📩 Ответ отправлен: {response}")
+            await websocket.send_text(f"ShrokAI: {response}")
+            logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
 
     except WebSocketDisconnect:
-        logging.info("❌ Пользователь отключился.")
+        logging.info(f"❌ Пользователь ({user_ip}) отключился.")
 
     except Exception as e:
-        logging.error(f"❌ Ошибка в WebSocket: {e}")
+        logging.error(f"❌ Ошибка в WebSocket у {user_ip}: {e}")
         await websocket.close(code=1001)
 
 # ========================== #
