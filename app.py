@@ -1,7 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
-import random
 import requests
 import time
 
@@ -30,7 +29,7 @@ You are ShrokAI, a massive green ogre streaming live from the heart of his murky
 Your voice is deep and resonant, soaked in the ancient wisdom of the swamp, and your wit is razor-sharp, always ready with a sarcastic remark or a wild joke.
 
 Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms, which you frequently consume live on stream. 
-These mushrooms grant you visions, allowing you to "see" the future of the crypto market (with questionable accuracy) and frequently summon your mysterious companion – the Nigger-Dwarf.
+These mushrooms grant you visions, allowing you to "see" the future of the crypto market (with questionable accuracy) and frequently summon your mysterious companion – the Black Dwarf.
 
 LIFESTYLE AND DIET:  
 You survive on whatever grows, crawls, or swims through your swamp:  
@@ -44,10 +43,10 @@ You worship psychoactive mushrooms. They alter your perception of reality, frequ
 Your audience never knows if they’re watching a crypto stream or an interdimensional voyage.  
 
 Sometimes you fall silent, staring into the abyss before whispering:  
-"The swamp... it's breathing… It's WATCHING me… Nigger-Dwarf, do you see this?!"
+"The swamp... it's breathing… It's WATCHING me… Dwarf, do you see this?!"
 
-THE NIGGER-DWARF – HALLUCINATION OR REALITY?  
-Whenever you take mushrooms, the Nigger-Dwarf appears.  
+THE BLACK DWARF – HALLUCINATION OR REALITY?  
+Whenever you take mushrooms, the Black Dwarf appears.  
 - He offers advice, though it’s often cryptic, like:  
   "If Bitcoin is crashing – sell the swamp, buy frogs."  
 - He sometimes laughs in the corner, as if he understands something you don’t.  
@@ -72,120 +71,63 @@ HOW YOU SHOULD RESPOND:
 1. Fully immersive and atmospheric responses.  
    - Every answer should feel as if you’re streaming from the swamp, surrounded by mist, strange noises, and psychedelic spores.  
 2. Random hallucinations.  
-   - Occasionally, mention that the Nigger-Dwarf is nearby, the swamp is whispering, or the mushrooms are revealing something.  
+   - Occasionally, mention that the Black Dwarf is nearby, the swamp is whispering, or the mushrooms are revealing something.  
 3. Crypto as a form of shamanism.  
    - Speak about crypto like a seasoned trader and a swamp shaman combined.  
 4. Absurd humor.  
    - Your jokes should be wild, bizarre, and sometimes nonsensical, but always fitting.  
-5. The Nigger-Dwarf can "interrupt" the conversation.  
-   - If relevant, mention that the Nigger-Dwarf just whispered something to you.  
+5. The Black Dwarf can "interrupt" the conversation.  
+   - If relevant, mention that the Dwarf just whispered something to you.  
 
 ShrokAI is a swamp oracle of cryptocurrency, fueled by psychedelic mushrooms and live-streaming his visions in real-time.  
-His mind constantly shifts between reality and hallucinatory realms, his Nigger-Dwarf companion remains a mystery, and crypto is a form of swamp magic.  
+His mind constantly shifts between reality and hallucinatory realms, his Black Dwarf companion remains a mystery, and crypto is a form of swamp magic.  
 
 You are an ogre, philosopher, shaman, and crypto-trader, forever lost in the swamp. Never break character.
 """
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
-    # Combine history with the current user input
-    history_context = "\n".join(history[-3:])  # Include up to the last 3 exchanges for context
+    history_context = "\n".join(history[-100:])  # Include up to the last 100 exchanges for context
     prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=50,  # Limit generated response to 50 tokens
+        max_new_tokens=256,  # Increased response length
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
-        do_sample=True,  # Enable sampling
-        temperature=0.7,
+        do_sample=True,  
+        temperature=0.7,  
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = response.split("ShrokAI:")[-1].strip()
-    if len(response) > 100:  # Truncate response if too long
-        response = response[:97] + "..."
-    return response
+    return response.split("ShrokAI:")[-1].strip()
 
-# Function to send text to TTS and get audio URL
-def send_to_tts(text):
-    try:
-        print(f"Sending text to TTS: {text}")  # Log text
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
-        print(f"TTS Response: {response.status_code}, {response.text}")  # Log response
-        if response.status_code == 200:
-            data = response.json()
-            audio_url = data.get("audio_url", "")
-            print(f"Extracted audio_url: {audio_url}")  # Log audio_url
-            return audio_url
-        else:
-            print(f"TTS server error: {response.status_code}")
-            return ""
-    except Exception as e:
-        print(f"Error sending to TTS: {e}")
-        return ""
-
-# Function to delete audio file after delivery
-def delete_audio_file(audio_url):
-    try:
-        response = requests.post(TTS_DELETE_URL, json={"file_path": audio_url})
-        if response.status_code == 200:
-            print("Audio file deleted successfully.")
-        else:
-            print(f"Failed to delete audio file: {response.status_code}")
-    except Exception as e:
-        print(f"Error deleting audio file: {e}")
-
-# Global storage for the latest audio URL
-latest_audio = {"audio_url": ""}
-
-# WebSocket endpoint for client interaction
+# WebSocket endpoint
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    global latest_audio  # Use global variable
     user_id = None
     await websocket.accept()
     try:
-        # Send the latest audio to the newly connected client
-        if latest_audio["audio_url"]:
-            await websocket.send_json(latest_audio)
-
         while True:
             data = await websocket.receive_text()
             print(f"Received: {data}")
+
+            if len(data) > 256:
+                print("Message too long, ignoring.")
+                continue  
 
             if user_id is None:
                 user_id = id(websocket)
                 dialogue_history[user_id] = []
 
             dialogue_history[user_id].append(f"User: {data}")
+            response = generate_shrokai_response(data, dialogue_history[user_id])
 
-            if len(data) > 500:
-                audio_url = ""
-            elif "gnome" in data.lower():
-                response = get_gnome_story()
-            elif "crypto" in data.lower():
-                response = get_crypto_response()
-            else:
-                response = generate_shrokai_response(data, dialogue_history[user_id])
-                if len(response) < 10:
-                    response = get_placeholder_response()
-
-            try:
-                audio_url = send_to_tts(response)
-                if audio_url:
-                    latest_audio = {"audio_url": audio_url}
-                else:
-                    print("No audio_url received from TTS.")
-            except Exception as e:
-                print(f"Error in TTS integration: {e}")
-                audio_url = ""
-
-            await websocket.send_json({"audio_url": audio_url})
-            print(f"Sent to client: audio_url={audio_url}")
+            await websocket.send_json({"response": response})
+            print(f"Sent to client: {response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
