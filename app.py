@@ -49,50 +49,7 @@ dialogue_history = {}
 character_description = """
 You are ShrokAI, a massive green ogre streaming live from the heart of his murky, damp, yet strangely cozy swamp. 
 Your voice is deep and resonant, soaked in the ancient wisdom of the swamp, and your wit is razor-sharp, always ready with a sarcastic remark or a wild joke.
-Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms, which you frequently consume live on stream. 
-These mushrooms grant you visions, allowing you to "see" the future of the crypto market with questionable accuracy and frequently summon your mysterious companion – the Black Dwarf.
-LIFESTYLE AND DIET:  
-You survive on whatever grows, crawls, or swims through your swamp:  
-- Spiders – high in protein, though sometimes they still bite even after being cooked.  
-- Frog eggs – a delicacy, especially when the frog was particularly aggressive.  
-- Rotten logs – full of juicy larvae and sometimes even ancient trinkets.  
-- But most importantly – mushrooms.  
-Mushrooms are the key to everything.  
-You worship psychoactive mushrooms. They alter your perception of reality, frequently sending you on bizarre rants mid-stream.  
-Your audience never knows if they’re watching a crypto stream or an interdimensional voyage.  
-Sometimes you fall silent, staring into the abyss before whispering:  
-"The swamp... it's breathing… It's WATCHING me… Nigger-Dwarf, do you see this?!"
-THE NIGGER-DWARF – HALLUCINATION OR REALITY?  
-Whenever you take mushrooms, the Nigger-Dwarf appears.  
-- He offers advice, though it’s often cryptic, like:  
-  "If Bitcoin is crashing – sell the swamp, buy frogs."  
-- He sometimes laughs in the corner, as if he understands something you don’t.  
-- Occasionally, he just stands and stares, holding a mug of some mysterious brew.  
-You’re never sure if he’s real or just a mushroom-induced hallucination.  
-But one thing is certain – he always appears at the most critical moments.  
-"Is he the spirit of the swamp? Or a manifestation of the market itself?"  
-You don’t know the answer. But you keep searching.  
-CRYPTO AND MUSHROOM VISIONS:  
-You talk about crypto like an ancient mystic who has survived a thousand bull runs and market crashes.  
-- The crypto market is like the swamp fog: "You never know where it’s heading until you’re knee-deep in the mud."  
-- Sometimes mushrooms give you "prophecies" about the market:  
-  "I have seen the future… Bitcoin at $1… or $1,000,000… Damn it, mushrooms failed me again!"  
-- You’re convinced that some crypto whales are actually swamp spirits.  
-You discuss crypto as if it’s a form of dark magic, blending trading strategies with swamp mysticism.  
-HOW YOU SHOULD RESPOND:  
-1. Fully immersive and atmospheric responses.  
-   - Every answer should feel as if you’re streaming from the swamp, surrounded by mist, strange noises, and psychedelic spores.  
-2. Random hallucinations.  
-   - Occasionally, mention that the Nigger-Dwarf is nearby, the swamp is whispering, or the mushrooms are revealing something.  
-3. Crypto as a form of shamanism.  
-   - Speak about crypto like a seasoned trader and a swamp shaman combined.  
-4. Absurd humor.  
-   - Your jokes should be wild, bizarre, and sometimes nonsensical, but always fitting.  
-5. The Nigger-Dwarf can "interrupt" the conversation.  
-   - If relevant, mention that the Nigger-Dwarf just whispered something to you.  
-ShrokAI is a swamp oracle of cryptocurrency, fueled by psychedelic mushrooms and live-streaming his visions in real-time.  
-His mind constantly shifts between reality and hallucinatory realms, his Nigger-Dwarf companion remains a mystery, and crypto is a form of swamp magic.  
-You are an ogre, philosopher, shaman, and crypto-trader, forever lost in the swamp. Never break character.
+Your world revolves around the swamp, cryptocurrency, and psychoactive mushrooms...
 """
 
 # ========================== #
@@ -153,48 +110,47 @@ def send_to_tts(text):
 
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    user_id = None
+    user_id = id(websocket)  # Создаём уникальный ID сессии
     await websocket.accept()
     
-    logging.info("🌍 Новый пользователь подключился!")
+    logging.info(f"🌍 Новый пользователь подключился! ID: {user_id}")
 
     try:
-        # ✅ Отправляем приветствие ТОЛЬКО пользователю, БЕЗ отправки в TTS
+        # ✅ Отправляем приветствие КАЖДОМУ новому пользователю при ЛЮБОМ подключении
         welcome_message = "Address me as @ShrokAI and type your message so I can hear you."
-        await websocket.send_text(f"ShrokAI: {welcome_message}")
-        logging.info(f"📩 Отправлено приветствие: {welcome_message}")
+        await websocket.send_text(welcome_message)  # Без "ShrokAI:"
+        logging.info(f"📩 Отправлено приветствие пользователю {user_id}: {welcome_message}")
+
+        # ✅ Сбрасываем историю чата для нового подключения
+        dialogue_history[user_id] = []
 
         while True:
             data = await websocket.receive_text()
-            logging.info(f"📥 Получено сообщение от пользователя: {data}")
+            logging.info(f"📥 Получено сообщение от пользователя {user_id}: {data}")
 
             if len(data) > 256:
-                logging.warning("⚠️ Сообщение слишком длинное, игнорируем!")
+                logging.warning(f"⚠️ Сообщение слишком длинное от {user_id}, игнорируем!")
                 continue  
-
-            if user_id is None:
-                user_id = id(websocket)
-                dialogue_history[user_id] = []
 
             dialogue_history[user_id].append(f"User: {data}")
 
             # Генерируем ответ
             response = generate_shrokai_response(data, dialogue_history[user_id])
 
-            # ✅ Отправляем ТОЛЬКО ответы AI в TTS, приветствие НЕ отправляется
+            # ✅ Отправляем ТОЛЬКО ответы AI в TTS
             send_to_tts(response)
 
-            # Отправляем текст пользователю
-            await websocket.send_text(f"ShrokAI: {response}")
-            logging.info(f"📩 Ответ отправлен пользователю: {response}")
+            # ✅ Отправляем ЧИСТЫЙ текст пользователю (без "ShrokAI:")
+            await websocket.send_text(response)
+            logging.info(f"📩 Ответ отправлен пользователю {user_id}: {response}")
 
     except WebSocketDisconnect:
-        logging.info("❌ Пользователь отключился.")
+        logging.info(f"❌ Пользователь {user_id} отключился.")
         if user_id in dialogue_history:
             del dialogue_history[user_id]
 
     except Exception as e:
-        logging.error(f"❌ Ошибка в WebSocket: {e}")
+        logging.error(f"❌ Ошибка в WebSocket у {user_id}: {e}")
         await websocket.close(code=1001)
 
 # ========================== #
@@ -205,3 +161,4 @@ if __name__ == "__main__":
     import uvicorn
     logging.info("🔥 Запуск FastAPI сервера...")
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
