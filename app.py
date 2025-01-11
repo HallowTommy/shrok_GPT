@@ -3,6 +3,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
+import time
 
 # ========================== #
 # 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВЕРА 🔥 #
@@ -66,7 +67,7 @@ def generate_shrokai_response(user_input):
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.7,  
+        temperature=0.9,  
         top_p=0.9  
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
@@ -84,16 +85,14 @@ def send_to_tts(text):
     try:
         response = requests.post(TTS_SERVER_URL, json={"text": text})
         if response.status_code == 200:
-            data = response.json()
-            audio_url = data.get("audio_url", "")
-            logging.info(f"✅ Аудио создано: {audio_url}")
-            return audio_url
+            logging.info("✅ Аудио успешно сгенерировано")
+            return True  # Подтверждаем успешное создание аудио
         else:
             logging.error(f"❌ Ошибка TTS: {response.status_code}, {response.text}")
-            return ""
+            return False
     except Exception as e:
         logging.error(f"❌ Ошибка при отправке в TTS: {e}")
-        return ""
+        return False
 
 # ========================== #
 # 🌐 WEBSOCKET ЭНДПОИНТ 🌐 #
@@ -116,10 +115,16 @@ async def websocket_endpoint(websocket: WebSocket):
             logging.info(f"📥 Получено сообщение от {user_ip}: {data}")
 
             response = generate_shrokai_response(data)
-            audio_url = send_to_tts(response)
 
-            await websocket.send_json({"audio_url": audio_url})
-            logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
+            # ✅ Сначала отправляем текст в TTS
+            tts_success = send_to_tts(response)
+
+            if tts_success:
+                # ✅ Только после успешного создания аудиофайла отправляем текст пользователю
+                await websocket.send_text(f"ShrokAI: {response}")
+                logging.info(f"📩 Ответ отправлен пользователю ({user_ip}): {response}")
+            else:
+                logging.error("❌ Ошибка генерации аудио, текст не отправлен пользователю.")
 
     except WebSocketDisconnect:
         logging.info(f"❌ Пользователь ({user_ip}) отключился.")
