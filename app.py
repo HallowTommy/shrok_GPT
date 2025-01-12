@@ -27,6 +27,9 @@ TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 # Welcome message
 WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
 
+# Locking mechanism to ensure queue processing
+processing_lock = False
+
 # Character description for prompt
 character_description = """
 You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your mysterious gnome neighbor. Your answers are short, fun, and engaging.
@@ -54,25 +57,27 @@ def generate_shrokai_response(user_input, history):
 
     return response
 
-# Function to send text to TTS
+# Function to send text to TTS and wait for response
 def send_to_tts(text):
     try:
         response = requests.post(TTS_SERVER_URL, json={"text": text})
         if response.status_code == 200:
-            return response.json().get("audio_url", "")
+            data = response.json()
+            duration = data.get("duration", 0)  # Получаем длительность аудио
+            return duration
     except Exception as e:
         print(f"Error sending to TTS: {e}")
-    return ""
+    return 0
 
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
+    global processing_lock
     await websocket.accept()
     active_connections.add(websocket)
     user_id = id(websocket)
     dialogue_history[user_id] = []
     
-    # Send welcome message to new user
     await websocket.send_text(WELCOME_MESSAGE)
     
     try:
@@ -80,16 +85,29 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
+            if processing_lock:
+                await websocket.send_text("ShrokAI is processing another request. Please wait...")
+                continue
+
+            processing_lock = True  # Блокируем приём новых сообщений
+
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
             
-            send_to_tts(response)  # Send response to TTS but do not return audio URL
+            # Запрос в TTS и ожидание завершения генерации
+            duration = send_to_tts(response)
             
-            # Broadcast message to all connected users
+            # Отправка ответа клиентам
+            message = {"text": response, "duration": duration}
             for connection in active_connections:
-                await connection.send_text(response)
-                print(f"Sent to client: {response}")
+                await connection.send_json(message)
+                print(f"Sent to client: {message}")
+            
+            # Блокируем дальнейшие сообщения на время (длительность аудио + 10 сек)
+            print(f"Blocking new messages for {duration + 10} seconds...")
+            time.sleep(duration + 10)
+            processing_lock = False  # Разблокируем прием новых сообщений
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
