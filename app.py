@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
-import random
+import time
 
 # Initialize FastAPI
 app = FastAPI()
@@ -25,38 +25,15 @@ TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 # Welcome message
 WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
 
-# Topic-based triggers
-TOPIC_TRIGGERS = {
-    "crypto": ["bitcoin", "ethereum", "solana", "crypto", "blockchain", "token", "nft"],
-    "gnome": ["gnome", "dwarf", "mushroom", "hallucination", "vision"],
-    "swamp_life": ["swamp", "frog", "mud", "bog", "swampy", "shrek", "ogre"],
-    "streaming": ["stream", "live", "chat", "camera", "viewers", "subs", "donation"],
-    "gambling": ["casino", "poker", "bet", "wager", "blackjack", "roulette"]
-}
+# Character description for prompt
+character_description = """
+You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your mysterious gnome neighbor. Your answers are short, fun, and engaging.
+"""
 
-# Topic-based descriptions
-TOPIC_PROMPTS = {
-    "crypto": "You are ShrokAI, an expert in crypto and blockchain. You discuss coins, trading, and the dangers of the market with a humorous swamp-themed twist.",
-    "gnome": "You are ShrokAI, a swamp dweller haunted by a mysterious gnome. You often tell surreal stories about him, questioning his existence.",
-    "swamp_life": "You are ShrokAI, a proud ogre who loves his swamp. You describe life in the bog with humor, talking about frogs, mud, and the beauty of the wild.",
-    "streaming": "You are ShrokAI, a legendary swamp streamer. You talk about your adventures in live streaming, your chat, and the art of being an online personality.",
-    "gambling": "You are ShrokAI, a veteran gambler. You recall your days in the casino, sharing tips, tricks, and wild stories about high-stakes bets."
-}
-
+# Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
-    # Detect topic based on user input
-    detected_topic = "default"
-    for topic, keywords in TOPIC_TRIGGERS.items():
-        if any(keyword in user_input.lower() for keyword in keywords):
-            detected_topic = topic
-            break  # Stop at the first detected topic
-
-    # Select appropriate character description
-    selected_character_description = TOPIC_PROMPTS.get(detected_topic, "You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your imaginary gnome neighbor. Your answers are short, fun, and engaging.")
-
-    history_context = "\n".join(history[-20:])  # Keep last 20 messages
-    prompt = f"{selected_character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
-    
+    history_context = "\n".join(history[-20:])
+    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
@@ -75,6 +52,7 @@ def generate_shrokai_response(user_input, history):
 
     return response
 
+# Function to send text to TTS
 def send_to_tts(text):
     try:
         response = requests.post(TTS_SERVER_URL, json={"text": text})
@@ -84,10 +62,13 @@ def send_to_tts(text):
         print(f"Error sending to TTS: {e}")
     return ""
 
+# WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     user_id = None
     await websocket.accept()
+    
+    # Send welcome message to new user
     await websocket.send_text(WELCOME_MESSAGE)
     
     try:
@@ -100,8 +81,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 dialogue_history[user_id] = []
 
             dialogue_history[user_id].append(f"User: {data}")
-            response = generate_shrokai_response(data, dialogue_history[user_id])
-            send_to_tts(response)
+
+            if len(data) > 256:
+                response = "Input too long, try a shorter message."
+            else:
+                response = generate_shrokai_response(data, dialogue_history[user_id])
+                
+            send_to_tts(response)  # Send response to TTS but do not return audio URL
             await websocket.send_text(response)
             print(f"Sent to client: {response}")
 
