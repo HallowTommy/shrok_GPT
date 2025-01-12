@@ -16,7 +16,9 @@ if tokenizer.pad_token is None:
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
-# Dialogue history
+# List of active WebSocket connections
+active_connections = set()
+# Dialogue history for each user
 dialogue_history = {}
 
 # TTS Server URL
@@ -65,8 +67,10 @@ def send_to_tts(text):
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    user_id = None
     await websocket.accept()
+    active_connections.add(websocket)
+    user_id = id(websocket)
+    dialogue_history[user_id] = []
     
     # Send welcome message to new user
     await websocket.send_text(WELCOME_MESSAGE)
@@ -76,25 +80,21 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            if user_id is None:
-                user_id = id(websocket)
-                dialogue_history[user_id] = []
-
             dialogue_history[user_id].append(f"User: {data}")
-
-            if len(data) > 256:
-                response = "Input too long, try a shorter message."
-            else:
-                response = generate_shrokai_response(data, dialogue_history[user_id])
-                
+            response = generate_shrokai_response(data, dialogue_history[user_id])
+            dialogue_history[user_id].append(f"ShrokAI: {response}")
+            
             send_to_tts(response)  # Send response to TTS but do not return audio URL
-            await websocket.send_text(response)
-            print(f"Sent to client: {response}")
+            
+            # Broadcast message to all connected users
+            for connection in active_connections:
+                await connection.send_text(response)
+                print(f"Sent to client: {response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
-        if user_id in dialogue_history:
-            del dialogue_history[user_id]
+        active_connections.remove(websocket)
+        del dialogue_history[user_id]
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
