@@ -20,6 +20,8 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 active_connections = set()
 # Dialogue history for each user
 dialogue_history = {}
+# Pending messages waiting for playback
+pending_messages = {}
 
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
@@ -34,7 +36,7 @@ You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You 
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
-    history_context = "\n".join(history[-30:])
+    history_context = "\n".join(history[-20:])
     prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
@@ -80,16 +82,21 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
+            if data == "play_text":
+                if user_id in pending_messages:
+                    message = pending_messages.pop(user_id)
+                    for connection in active_connections:
+                        await connection.send_text(message)
+                        print(f"Sent to client: {message}")
+                continue
+
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
             
             send_to_tts(response)  # Send response to TTS but do not return audio URL
             
-            # Broadcast message to all connected users
-            for connection in active_connections:
-                await connection.send_text(response)
-                print(f"Sent to client: {response}")
+            pending_messages[user_id] = response  # Store message until playback starts
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
