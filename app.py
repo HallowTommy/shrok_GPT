@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
-import asyncio
+import time
 
 # Initialize FastAPI
 app = FastAPI()
@@ -16,12 +16,10 @@ if tokenizer.pad_token is None:
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
-# Active WebSocket connections
+# List of active WebSocket connections
 active_connections = set()
 # Dialogue history for each user
 dialogue_history = {}
-# Text queue to synchronize with audio playback
-text_queue = asyncio.Queue()
 
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
@@ -56,6 +54,17 @@ def generate_shrokai_response(user_input, history):
 
     return response
 
+# Function to send text to TTS
+def send_to_tts(text):
+    try:
+        response = requests.post(TTS_SERVER_URL, json={"text": text})
+        if response.status_code == 200:
+            return response.json().get("audio_url", "")
+    except Exception as e:
+        print(f"Error sending to TTS: {e}")
+    return ""
+
+# WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -63,6 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
     user_id = id(websocket)
     dialogue_history[user_id] = []
     
+    # Send welcome message to new user
     await websocket.send_text(WELCOME_MESSAGE)
     
     try:
@@ -70,20 +80,23 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            if data == "play_text":
-                text = await text_queue.get()  # Wait until corresponding text is available
+            if data == "playback_started":
+                response = dialogue_history.get(user_id, [])[-1] if user_id in dialogue_history else ""
                 for connection in active_connections:
-                    await connection.send_text(text)
-                    print(f"📨 Sent to all clients: {text}")
+                    await connection.send_text(response)
+                print(f"Broadcasted text: {response}")
                 continue
 
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
             
-            requests.post(TTS_SERVER_URL, json={"text": response})  # Send text to TTS
+            audio_url = send_to_tts(response)  # Get audio URL
             
-            await text_queue.put(response)  # Store text in queue
+            # Send audio URL first
+            for connection in active_connections:
+                await connection.send_text(f"AUDIO:{audio_url}")
+                print(f"Sent audio URL: {audio_url}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
