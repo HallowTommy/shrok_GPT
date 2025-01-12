@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
 import time
+import asyncio
 
 # Initialize FastAPI
 app = FastAPI()
@@ -21,14 +22,15 @@ active_connections = set()
 # Dialogue history for each user
 dialogue_history = {}
 
+# Global control variables
+is_processing = False  # Blocks new requests while a response is being generated
+block_time = 0  # Stores the time (in seconds) for which new requests are blocked
+
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
 # Welcome message
 WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
-
-# Locking mechanism to ensure queue processing
-processing_lock = False
 
 # Character description for prompt
 character_description = """
@@ -57,27 +59,38 @@ def generate_shrokai_response(user_input, history):
 
     return response
 
-# Function to send text to TTS and wait for response
+# Function to send text to TTS and receive audio length
 def send_to_tts(text):
+    global block_time
     try:
         response = requests.post(TTS_SERVER_URL, json={"text": text})
         if response.status_code == 200:
             data = response.json()
-            duration = data.get("duration", 0)  # Получаем длительность аудио
-            return duration
+            audio_length = data.get("audio_length", 0)  # Получаем длину аудио
+            block_time = audio_length + 10  # Устанавливаем время блокировки
+            return audio_length
     except Exception as e:
         print(f"Error sending to TTS: {e}")
     return 0
 
+# Function to handle blocking logic
+async def unblock_after_delay():
+    global is_processing
+    print(f"Blocking requests for {block_time} seconds...")
+    await asyncio.sleep(block_time)
+    is_processing = False
+    print("Unblocking requests.")
+
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    global processing_lock
+    global is_processing
     await websocket.accept()
     active_connections.add(websocket)
     user_id = id(websocket)
     dialogue_history[user_id] = []
     
+    # Send welcome message to new user
     await websocket.send_text(WELCOME_MESSAGE)
     
     try:
@@ -85,29 +98,27 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            if processing_lock:
-                await websocket.send_text("ShrokAI is processing another request. Please wait...")
+            # Block new requests if processing is active
+            if is_processing:
+                await websocket.send_text("ShrokAI is busy, try again later!")
                 continue
-
-            processing_lock = True  # Блокируем приём новых сообщений
+            
+            is_processing = True  # Block new messages during processing
 
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
+
+            # Send response to TTS and get audio length
+            audio_length = send_to_tts(response)
             
-            # Запрос в TTS и ожидание завершения генерации
-            duration = send_to_tts(response)
-            
-            # Отправка ответа клиентам
-            message = {"text": response, "duration": duration}
+            # Start unblock timer
+            asyncio.create_task(unblock_after_delay())
+
+            # Broadcast only text response to all users
             for connection in active_connections:
-                await connection.send_json(message)
-                print(f"Sent to client: {message}")
-            
-            # Блокируем дальнейшие сообщения на время (длительность аудио + 10 сек)
-            print(f"Blocking new messages for {duration + 10} seconds...")
-            time.sleep(duration + 10)
-            processing_lock = False  # Разблокируем прием новых сообщений
+                await connection.send_text(response)
+                print(f"Sent to client: {response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
