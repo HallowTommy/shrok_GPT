@@ -80,13 +80,6 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            if data == "playback_started":
-                response = dialogue_history.get(user_id, [])[-1] if user_id in dialogue_history else ""
-                for connection in active_connections:
-                    await connection.send_text(response)
-                print(f"Broadcasted text: {response}")
-                continue
-
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
@@ -105,6 +98,23 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
+
+# WebSocket endpoint to receive playback signals
+@app.websocket("/ws/sync")
+async def sync_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "playback_started":
+                response = list(dialogue_history.values())[-1][-1] if dialogue_history else ""
+                for connection in active_connections:
+                    await connection.send_text(response)
+                print(f"Broadcasted text: {response}")
+    except WebSocketDisconnect:
+        print("Sync WebSocket disconnected")
+    except Exception as e:
+        print(f"Unexpected sync error: {e}")
 
 if __name__ == "__main__":
     import uvicorn
