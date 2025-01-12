@@ -20,6 +20,8 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 active_connections = set()
 # Dialogue history for each user
 dialogue_history = {}
+# Last generated response (to be sent when playback starts)
+last_generated_response = ""
 
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
@@ -84,12 +86,9 @@ async def websocket_endpoint(websocket: WebSocket):
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
             
-            audio_url = send_to_tts(response)  # Get audio URL
-            
-            # Send audio URL first
-            for connection in active_connections:
-                await connection.send_text(f"AUDIO:{audio_url}")
-                print(f"Sent audio URL: {audio_url}")
+            global last_generated_response
+            last_generated_response = response  # Store response but don't send yet
+            send_to_tts(response)  # Send to TTS but wait for playback signal
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
@@ -107,10 +106,10 @@ async def sync_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             if data == "playback_started":
-                response = list(dialogue_history.values())[-1][-1] if dialogue_history else ""
-                for connection in active_connections:
-                    await connection.send_text(response)
-                print(f"Broadcasted text: {response}")
+                if last_generated_response:
+                    for connection in active_connections:
+                        await connection.send_text(last_generated_response)
+                    print(f"Broadcasted text: {last_generated_response}")
     except WebSocketDisconnect:
         print("Sync WebSocket disconnected")
     except Exception as e:
