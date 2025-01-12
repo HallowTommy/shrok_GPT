@@ -100,7 +100,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Block new requests if processing is active
             if is_processing:
-                await websocket.send_text("ShrokAI is busy, try again later!")
+                await websocket.send_text("Give me some time to answer the previous request first, then hit me up.")
                 continue
             
             is_processing = True  # Block new messages during processing
