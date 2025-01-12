@@ -113,6 +113,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 response = get_crypto_response()
             else:
                 response = generate_shrokai_response(data, dialogue_history[user_id])
+                
             send_to_tts(response)  # Send response to TTS but do not return audio URL
             await websocket.send_text(response)
             print(f"Sent to client: {response}")
