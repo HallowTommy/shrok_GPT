@@ -101,21 +101,21 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Если ИИ уже обрабатывает запрос, сразу отправляем сообщение пользователю
+            # Если ИИ уже обрабатывает запрос, немедленно отправляем сообщение пользователю
             if is_processing:
-                await websocket.send_text(BUSY_MESSAGE)
+                await websocket.send_text(BUSY_MESSAGE)  # Локально отправляем пользователю
                 continue  # Не передаём сообщение дальше
 
-            # Помечаем, что началась обработка
-            is_processing = True
-
-            # Оповещаем всех пользователей, что ИИ занят
+            # Уведомляем всех пользователей, что ИИ начал обработку
             for connection in list(active_connections):
                 try:
-                    await connection.send_text(BUSY_MESSAGE)
+                    await connection.send_text(BUSY_MESSAGE)  # Отправляем всем
                 except Exception as e:
                     print(f"Failed to send busy message to a client: {e}")
                     active_connections.remove(connection)
+
+            # Помечаем, что началась обработка
+            is_processing = True
 
             # Добавляем сообщение в историю и генерируем ответ
             dialogue_history[user_id].append(f"User: {data}")
@@ -148,4 +148,3 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
-
