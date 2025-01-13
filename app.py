@@ -84,19 +84,6 @@ async def unblock_after_delay():
     is_processing = False
     print("Unblocking requests.")
 
-# **Мониторинг и мгновенная отправка BUSY_MESSAGE**
-async def monitor_busy_state(websocket: WebSocket):
-    """Слушает входящие сообщения и моментально отправляет 'ShrokAI is busy...' если уже идет обработка."""
-    global is_processing
-    while True:
-        data = await websocket.receive_text()
-        print(f"Received during processing: {data}")
-        
-        if is_processing:
-            await websocket.send_text(BUSY_MESSAGE)
-        else:
-            return data  # Возвращает данные только если можно обработать
-
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -111,16 +98,16 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            # Запускаем мониторинг и ждем "разрешенные" сообщения
-            data = await monitor_busy_state(websocket)
+            # Немедленная проверка блокировки перед приемом сообщений
+            if is_processing:
+                await websocket.send_text(BUSY_MESSAGE)
+                continue  # НЕ передавать сообщение дальше
 
-            # Если данных нет, значит пользователь просто получал BUSY_MESSAGE, пропускаем обработку
-            if not data:
-                continue
-
+            # Получаем сообщение от пользователя
+            data = await websocket.receive_text()
             print(f"Processing request: {data}")
 
-            # Уведомляем всех пользователей, что ИИ начал обработку
+            # Отправляем BUSY_MESSAGE всем пользователям (фиксируем момент начала обработки)
             for connection in list(active_connections):
                 try:
                     await connection.send_text(BUSY_MESSAGE)
