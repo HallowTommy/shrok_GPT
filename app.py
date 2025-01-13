@@ -101,14 +101,14 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # ✅ Сначала проверяем занятость ИИ
+            # Если ИИ уже обрабатывает запрос, отправляем заглушку сразу
             if is_processing:
                 print("ShrokAI is currently busy. Sending busy message.")
                 await websocket.send_text(BUSY_MESSAGE)
-                continue  # Не передаём сообщение дальше
+                continue  # Прерываем обработку текущего сообщения, не передавая его ИИ
 
-            # ✅ Теперь принимаем сообщение и начинаем обработку
-            is_processing = True  # Блокируем прием новых сообщений
+            # Помечаем, что началась обработка
+            is_processing = True
 
             # Добавляем сообщение в историю и генерируем ответ
             dialogue_history[user_id].append(f"User: {data}")
