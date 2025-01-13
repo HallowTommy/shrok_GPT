@@ -97,8 +97,9 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Block new requests if processing is active
+            # Check if the server is busy
             if is_processing:
+                # Immediately inform the user that ShrokAI is busy
                 await websocket.send_text("ShrokAI is busy, please wait for the current response to complete.")
                 continue
             
