@@ -101,15 +101,15 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Block new requests if processing is active
+            # Если ИИ уже обрабатывает запрос, сразу отправляем сообщение пользователю
             if is_processing:
                 await websocket.send_text(BUSY_MESSAGE)
-                continue
-            
-            # Mark processing as active
+                continue  # Не передаём сообщение дальше
+
+            # Помечаем, что началась обработка
             is_processing = True
 
-            # Notify all users that ShrokAI is processing a request
+            # Оповещаем всех пользователей, что ИИ занят
             for connection in list(active_connections):
                 try:
                     await connection.send_text(BUSY_MESSAGE)
@@ -117,12 +117,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"Failed to send busy message to a client: {e}")
                     active_connections.remove(connection)
 
-            # Add user input to history and generate response
+            # Добавляем сообщение в историю и генерируем ответ
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
-            # Send generated response to all connected users
+            # Рассылаем ответ от ИИ всем пользователям
             for connection in list(active_connections):
                 try:
                     await connection.send_text(response)
@@ -131,10 +131,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     active_connections.remove(connection)
                 print(f"Sent to client: {response}")
 
-            # Send response to TTS and get audio length
+            # Отправляем текст в TTS и получаем длительность аудиофайла
             audio_length = send_to_tts(response)
             
-            # Start unblock timer
+            # Запускаем таймер разблокировки
             asyncio.create_task(unblock_after_delay())
 
     except WebSocketDisconnect:
