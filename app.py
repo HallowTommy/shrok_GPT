@@ -112,9 +112,14 @@ async def websocket_endpoint(websocket: WebSocket):
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
-            # Send generated response to the user immediately
-            await websocket.send_text(response)
-            print(f"Sent to client: {response}")
+            # Send generated response to all connected users
+            for connection in list(active_connections):
+                try:
+                    await connection.send_text(response)
+                except Exception as e:
+                    print(f"Failed to send message to a client: {e}")
+                    active_connections.remove(connection)
+                print(f"Sent to client: {response}")
 
             # Send response to TTS and get audio length
             audio_length = send_to_tts(response)
