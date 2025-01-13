@@ -33,9 +33,7 @@ WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear yo
 
 # Character description for prompt
 character_description = """
-Your name is Shrok, a green ogre streamer obsessed with psychoactive mushrooms.
-They grant you visions of the crypto market’s future and summon the niger gnome.
-You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard Solana enthusiast.
+You are ShrokAI, a big, green ogre streamer who broadcasts from your swamp. You love jokes, crypto, and stories about your mysterious gnome neighbor. Your answers are short, fun, and engaging.
 """
 
 # Function to generate ShrokAI's response
@@ -99,9 +97,8 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Check if the server is busy
+            # Block new requests if processing is active
             if is_processing:
-                # Immediately inform the user that ShrokAI is busy
                 await websocket.send_text("ShrokAI is busy, please wait for the current response to complete.")
                 continue
             
