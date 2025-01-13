@@ -98,16 +98,17 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            # Немедленная проверка блокировки перед приемом сообщений
-            if is_processing:
-                await websocket.send_text(BUSY_MESSAGE)
-                continue  # НЕ передавать сообщение дальше
-
             # Получаем сообщение от пользователя
             data = await websocket.receive_text()
+
+            # **НЕМЕДЛЕННО отправляем BUSY_MESSAGE, если ИИ занят**
+            if is_processing:
+                await websocket.send_text(BUSY_MESSAGE)
+                continue  # **НЕ передаем сообщение дальше!**
+
             print(f"Processing request: {data}")
 
-            # Отправляем BUSY_MESSAGE всем пользователям (фиксируем момент начала обработки)
+            # **Отправляем BUSY_MESSAGE всем пользователям** (фиксируем момент начала обработки)
             for connection in list(active_connections):
                 try:
                     await connection.send_text(BUSY_MESSAGE)
@@ -115,15 +116,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"Failed to send busy message to a client: {e}")
                     active_connections.remove(connection)
 
-            # Помечаем, что началась обработка
+            # **Помечаем, что началась обработка**
             is_processing = True
 
-            # Добавляем сообщение в историю и генерируем ответ
+            # **Добавляем сообщение в историю и генерируем ответ**
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
-            # Рассылаем ответ от ИИ всем пользователям
+            # **Рассылаем ответ от ИИ всем пользователям**
             for connection in list(active_connections):
                 try:
                     await connection.send_text(response)
@@ -132,10 +133,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     active_connections.remove(connection)
                 print(f"Sent to client: {response}")
 
-            # Отправляем текст в TTS и получаем длительность аудиофайла
+            # **Отправляем текст в TTS и получаем длительность аудиофайла**
             audio_length = send_to_tts(response)
             
-            # Запускаем таймер разблокировки
+            # **Запускаем таймер разблокировки**
             asyncio.create_task(unblock_after_delay())
 
     except WebSocketDisconnect:
