@@ -84,6 +84,19 @@ async def unblock_after_delay():
     is_processing = False
     print("Unblocking requests.")
 
+# **Мониторинг и мгновенная отправка BUSY_MESSAGE**
+async def monitor_busy_state(websocket: WebSocket):
+    """Слушает входящие сообщения и моментально отправляет 'ShrokAI is busy...' если уже идет обработка."""
+    global is_processing
+    while True:
+        data = await websocket.receive_text()
+        print(f"Received during processing: {data}")
+        
+        if is_processing:
+            await websocket.send_text(BUSY_MESSAGE)
+        else:
+            return data  # Возвращает данные только если можно обработать
+
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -98,18 +111,19 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            data = await websocket.receive_text()
-            print(f"Received: {data}")
+            # Запускаем мониторинг и ждем "разрешенные" сообщения
+            data = await monitor_busy_state(websocket)
 
-            # Если ИИ уже обрабатывает запрос, немедленно отправляем сообщение пользователю
-            if is_processing:
-                await websocket.send_text(BUSY_MESSAGE)  # Локально отправляем пользователю
-                continue  # Не передаём сообщение дальше
+            # Если данных нет, значит пользователь просто получал BUSY_MESSAGE, пропускаем обработку
+            if not data:
+                continue
+
+            print(f"Processing request: {data}")
 
             # Уведомляем всех пользователей, что ИИ начал обработку
             for connection in list(active_connections):
                 try:
-                    await connection.send_text(BUSY_MESSAGE)  # Отправляем всем
+                    await connection.send_text(BUSY_MESSAGE)
                 except Exception as e:
                     print(f"Failed to send busy message to a client: {e}")
                     active_connections.remove(connection)
