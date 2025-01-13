@@ -2,7 +2,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
-import time
 import asyncio
 
 # Initialize FastAPI
@@ -100,25 +99,26 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Block new requests if processing is active
             if is_processing:
-                await websocket.send_text("Give me some time to answer the previous request first, then hit me up.")
+                await websocket.send_text("ShrokAI is busy, please wait for the current response to complete.")
                 continue
             
-            is_processing = True  # Block new messages during processing
+            # Mark processing as active
+            is_processing = True
 
+            # Add user input to history and generate response
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
+
+            # Send generated response to the user immediately
+            await websocket.send_text(response)
+            print(f"Sent to client: {response}")
 
             # Send response to TTS and get audio length
             audio_length = send_to_tts(response)
             
             # Start unblock timer
             asyncio.create_task(unblock_after_delay())
-
-            # Broadcast only text response to all users
-            for connection in active_connections:
-                await connection.send_text(response)
-                print(f"Sent to client: {response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
