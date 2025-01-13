@@ -28,7 +28,7 @@ block_time = 0  # Stores the time (in seconds) for which new requests are blocke
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
-# Welcome message
+# Messages
 WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
 BUSY_MESSAGE = "ShrokAI is busy, please wait for the current response to complete."
 
@@ -84,6 +84,13 @@ async def unblock_after_delay():
     is_processing = False
     print("Unblocking requests.")
 
+# Function to notify users that ShrokAI is busy
+async def notify_busy_users(websocket):
+    try:
+        await websocket.send_text(BUSY_MESSAGE)
+    except Exception as e:
+        print(f"Error sending busy message: {e}")
+
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -98,17 +105,18 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            # Получаем сообщение от пользователя
             data = await websocket.receive_text()
+            print(f"Received: {data}")
 
-            # **НЕМЕДЛЕННО отправляем BUSY_MESSAGE, если ИИ занят**
+            # Если ИИ уже обрабатывает запрос, сразу отправляем заглушку пользователю
             if is_processing:
-                await websocket.send_text(BUSY_MESSAGE)
-                continue  # **НЕ передаем сообщение дальше!**
+                await notify_busy_users(websocket)
+                continue  # Не передаём сообщение дальше
 
-            print(f"Processing request: {data}")
+            # Помечаем, что началась обработка
+            is_processing = True
 
-            # **Отправляем BUSY_MESSAGE всем пользователям** (фиксируем момент начала обработки)
+            # Оповещаем всех пользователей, что ИИ занят
             for connection in list(active_connections):
                 try:
                     await connection.send_text(BUSY_MESSAGE)
@@ -116,15 +124,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"Failed to send busy message to a client: {e}")
                     active_connections.remove(connection)
 
-            # **Помечаем, что началась обработка**
-            is_processing = True
-
-            # **Добавляем сообщение в историю и генерируем ответ**
+            # Добавляем сообщение в историю и генерируем ответ
             dialogue_history[user_id].append(f"User: {data}")
             response = generate_shrokai_response(data, dialogue_history[user_id])
             dialogue_history[user_id].append(f"ShrokAI: {response}")
 
-            # **Рассылаем ответ от ИИ всем пользователям**
+            # Рассылаем ответ от ИИ всем пользователям
             for connection in list(active_connections):
                 try:
                     await connection.send_text(response)
@@ -133,10 +138,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     active_connections.remove(connection)
                 print(f"Sent to client: {response}")
 
-            # **Отправляем текст в TTS и получаем длительность аудиофайла**
+            # Отправляем текст в TTS и получаем длительность аудиофайла
             audio_length = send_to_tts(response)
             
-            # **Запускаем таймер разблокировки**
+            # Запускаем таймер разблокировки
             asyncio.create_task(unblock_after_delay())
 
     except WebSocketDisconnect:
