@@ -30,12 +30,14 @@ TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
 # Welcome message
 WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
+BUSY_MESSAGE = "ShrokAI is busy, please wait for the current response to complete."
 
 # Character description for prompt
 character_description = """
 Your name is Shrok, a green ogre streamer obsessed with psychoactive mushrooms.
 They grant you visions of the crypto market’s future and summon the niger gnome.
 You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard Solana enthusiast.
+Always reply briefly and with humor.
 """
 
 # Function to generate ShrokAI's response
@@ -52,7 +54,7 @@ def generate_shrokai_response(user_input, history):
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.7,
+        temperature=0.6, 
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -101,11 +103,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Block new requests if processing is active
             if is_processing:
-                await websocket.send_text("ShrokAI is busy, please wait for the current response to complete.")
+                await websocket.send_text(BUSY_MESSAGE)
                 continue
             
             # Mark processing as active
             is_processing = True
+
+            # Notify all users that ShrokAI is processing a request
+            for connection in list(active_connections):
+                try:
+                    await connection.send_text(BUSY_MESSAGE)
+                except Exception as e:
+                    print(f"Failed to send busy message to a client: {e}")
+                    active_connections.remove(connection)
 
             # Add user input to history and generate response
             dialogue_history[user_id].append(f"User: {data}")
@@ -138,3 +148,4 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
