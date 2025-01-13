@@ -28,7 +28,7 @@ block_time = 0  # Stores the time (in seconds) for which new requests are blocke
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
-# Messages
+# Welcome message
 WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
 BUSY_MESSAGE = "ShrokAI is busy, please wait for the current response to complete."
 
@@ -84,13 +84,6 @@ async def unblock_after_delay():
     is_processing = False
     print("Unblocking requests.")
 
-# Function to notify users that ShrokAI is busy
-async def notify_busy_users(websocket):
-    try:
-        await websocket.send_text(BUSY_MESSAGE)
-    except Exception as e:
-        print(f"Error sending busy message: {e}")
-
 # WebSocket endpoint for client interaction
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
@@ -108,21 +101,14 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             print(f"Received: {data}")
 
-            # Если ИИ уже обрабатывает запрос, сразу отправляем заглушку пользователю
+            # ✅ Сначала проверяем занятость ИИ
             if is_processing:
-                await notify_busy_users(websocket)
+                print("ShrokAI is currently busy. Sending busy message.")
+                await websocket.send_text(BUSY_MESSAGE)
                 continue  # Не передаём сообщение дальше
 
-            # Помечаем, что началась обработка
-            is_processing = True
-
-            # Оповещаем всех пользователей, что ИИ занят
-            for connection in list(active_connections):
-                try:
-                    await connection.send_text(BUSY_MESSAGE)
-                except Exception as e:
-                    print(f"Failed to send busy message to a client: {e}")
-                    active_connections.remove(connection)
+            # ✅ Теперь принимаем сообщение и начинаем обработку
+            is_processing = True  # Блокируем прием новых сообщений
 
             # Добавляем сообщение в историю и генерируем ответ
             dialogue_history[user_id].append(f"User: {data}")
@@ -155,3 +141,4 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
