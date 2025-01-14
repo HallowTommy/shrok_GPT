@@ -59,10 +59,11 @@ def send_to_tts(text):
         response = requests.post(TTS_SERVER_URL, json={"text": text})
         if response.status_code == 200:
             data = response.json()
-            return data.get("audio_length", 0)  # Получаем длину аудио
+            if data.get("vps_uploaded", False):  # Ждём подтверждение загрузки на VPS
+                return data.get("audio_length", 0)  # Возвращаем длину аудио
     except Exception as e:
         print(f"Error sending to TTS: {e}")
-    return 0
+    return 0  # Если ошибка или подтверждения нет, считаем, что аудио не создано
 
 # Function to reset AI status after delay
 async def reset_ai_status(delay):
@@ -96,17 +97,21 @@ async def websocket_endpoint(websocket: WebSocket):
             # Генерируем ответ от AI
             response = generate_shrokai_response(message, [])
 
-            # Отправляем текст в TTS и получаем длину аудио
+            # Отправляем текст в TTS и ждём подтверждение загрузки аудиофайла
             audio_length = send_to_tts(response)
 
-            # Отправляем финальный ответ
-            response_data = json.dumps({"response": response, "audio_length": audio_length})
-            await websocket.send_text(response_data)
+            if audio_length > 0:
+                # Отправляем финальный ответ клиентам В МОМЕНТ ЗАПУСКА ТАЙМЕРА
+                response_data = json.dumps({"response": response, "audio_length": audio_length})
+                await websocket.send_text(response_data)
 
-            print(f"Sent response: {response}")
+                print(f"Sent response: {response}")
 
-            # Запускаем таймер перед освобождением AI (аудио + 10 сек)
-            asyncio.create_task(reset_ai_status(audio_length + 10))
+                # Запускаем таймер перед освобождением AI (аудио + 10 сек)
+                asyncio.create_task(reset_ai_status(audio_length + 10))
+            else:
+                print("TTS processing failed. AI will become free immediately.")
+                ai_processing_status = False  # Если аудио не создано, AI сразу становится свободным
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
