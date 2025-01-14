@@ -70,6 +70,10 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive_text()
             print(f"Processing request: {message}")
 
+            # Сигнализируем, что обработка началась
+            processing_data = json.dumps({"processing": True})
+            await websocket.send_text(processing_data)  
+
             # Generate response from AI
             response = generate_shrokai_response(message, [])
 
