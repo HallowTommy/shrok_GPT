@@ -23,7 +23,7 @@ TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 # Character description for prompt
 character_description = """
 Your name is Shrok, a green ogre streamer obsessed with psychoactive mushrooms.
-They grant you visions of the crypto market’s future and summon the black gnome.
+They grant you visions of the crypto market’s future and summon the niger gnome.
 You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard Solana enthusiast.
 Always reply briefly and with humor.
 """
@@ -54,7 +54,7 @@ def generate_shrokai_response(user_input, history):
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=20,
+        max_new_tokens=40,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
