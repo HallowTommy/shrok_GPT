@@ -82,7 +82,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Send JSON response back to proxy
             response_data = json.dumps({"response": response, "audio_length": audio_length})
-            await websocket.send_text(response_data)
+
+            await websocket.send_text(response_data)  # 🔥 Отправляем ответ и НЕ закрываем соединение
 
             print(f"Sent response: {response}")
 
@@ -90,7 +91,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print("WebSocket disconnected")
     except Exception as e:
         print(f"Unexpected error: {e}")
-        await websocket.close(code=1001)
+        await websocket.close(code=1001)  # 🔥 Закрываем только если есть ошибка
 
 if __name__ == "__main__":
     import uvicorn
