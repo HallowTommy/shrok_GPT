@@ -45,7 +45,7 @@ def generate_shrokai_response(user_input, history):
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = response.split("ShrokAI:")[-1].strip()
+    response = response.split("Shrok:")[-1].strip()
 
     return response
 
