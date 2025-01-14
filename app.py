@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
 import json
+import asyncio
 
 # Initialize FastAPI
 app = FastAPI()
@@ -19,6 +20,9 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
 
+# Global variable to track AI processing status
+ai_processing_status = False  # False - свободен, True - занят
+
 # Character description for prompt
 character_description = """
 Your name is Shrok, a green ogre streamer obsessed with psychoactive mushrooms.
@@ -30,7 +34,7 @@ Always reply briefly and with humor.
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
     history_context = "\n".join(history[-20:])
-    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrok:"
+    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
@@ -45,7 +49,7 @@ def generate_shrokai_response(user_input, history):
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = response.split("Shrok:")[-1].strip()
+    response = response.split("ShrokAI:")[-1].strip()
 
     return response
 
@@ -60,31 +64,49 @@ def send_to_tts(text):
         print(f"Error sending to TTS: {e}")
     return 0
 
+# Function to reset AI status after delay
+async def reset_ai_status(delay):
+    global ai_processing_status
+    await asyncio.sleep(delay)
+    ai_processing_status = False
+    print("AI is now available.")
+
 # WebSocket endpoint for AI processing
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
+    global ai_processing_status
     await websocket.accept()
     
     try:
         while True:
             message = await websocket.receive_text()
+            data = json.loads(message)
+
+            # Если прокси запрашивает статус, сразу отправляем его
+            if data.get("status_request"):
+                await websocket.send_text(json.dumps({"processing": ai_processing_status}))
+                continue  # Прерываем выполнение, не обрабатываем текст
+
             print(f"Processing request: {message}")
 
-            # Сигнализируем, что обработка началась
-            processing_data = json.dumps({"processing": True})
-            await websocket.send_text(processing_data)  
+            # AI становится занятым
+            ai_processing_status = True
+            await websocket.send_text(json.dumps({"processing": ai_processing_status}))
 
-            # Generate response from AI
+            # Генерируем ответ от AI
             response = generate_shrokai_response(message, [])
 
-            # Send text to TTS and get audio length
+            # Отправляем текст в TTS и получаем длину аудио
             audio_length = send_to_tts(response)
 
-            # Send JSON response back to proxy
+            # Отправляем финальный ответ
             response_data = json.dumps({"response": response, "audio_length": audio_length})
             await websocket.send_text(response_data)
 
             print(f"Sent response: {response}")
+
+            # Запускаем таймер перед освобождением AI (аудио + 10 сек)
+            asyncio.create_task(reset_ai_status(audio_length + 10))
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
