@@ -30,7 +30,7 @@ Always reply briefly and with humor.
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
     history_context = "\n".join(history[-20:])
-    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrokAI:"
+    prompt = f"{character_description}\n\n{history_context}\nUser: {user_input}\nShrok:"
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
 
     outputs = model.generate(
