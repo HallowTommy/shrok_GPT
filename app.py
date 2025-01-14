@@ -56,14 +56,16 @@ def generate_shrokai_response(user_input, history):
 # Function to send text to TTS and receive audio length
 def send_to_tts(text):
     try:
-        response = requests.post(TTS_SERVER_URL, json={"text": text})
+        response = requests.post(TTS_SERVER_URL, json={"text": text}, timeout=10)  # ⏳ Таймаут 10 сек
         if response.status_code == 200:
             data = response.json()
-            if data.get("vps_uploaded", False):  # Ждём подтверждение загрузки на VPS
+            if data.get("vps_uploaded", False):  # ✅ Ждём подтверждение от TTS
                 return data.get("audio_length", 0)  # Возвращаем длину аудио
+    except requests.exceptions.Timeout:
+        print("TTS server timeout! AI will become available.")
     except Exception as e:
         print(f"Error sending to TTS: {e}")
-    return 0  # Если ошибка или подтверждения нет, считаем, что аудио не создано
+    return 0  # Если подтверждения нет, считаем, что аудио не создано
 
 # Function to reset AI status after delay
 async def reset_ai_status(delay):
