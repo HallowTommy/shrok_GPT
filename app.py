@@ -83,12 +83,19 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             message = await websocket.receive_text()
-            data = json.loads(message)
 
-            # Если прокси запрашивает статус, сразу отправляем его
+            # ✅ Проверяем JSON перед обработкой
+            try:
+                data = json.loads(message)
+            except json.JSONDecodeError:
+                print("❌ Получен некорректный JSON от прокси")
+                await websocket.send_text(json.dumps({"error": "Invalid request"}))
+                continue  # Пропускаем обработку
+
+            # ✅ Если это просто запрос статуса, отвечаем сразу
             if data.get("status_request"):
                 await websocket.send_text(json.dumps({"processing": ai_processing_status}))
-                continue  # Прерываем выполнение, не обрабатываем текст
+                continue  
 
             print(f"Processing request: {message}")
 
@@ -97,19 +104,19 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text(json.dumps({"processing": ai_processing_status}))
 
             # Генерируем ответ от AI
-            response = generate_shrokai_response(message, [])
+            response = generate_shrokai_response(data["text"], [])
 
             # Отправляем текст в TTS и ждём подтверждение загрузки аудиофайла
             audio_length = send_to_tts(response)
 
             if audio_length > 0:
-                # Отправляем финальный ответ клиентам В МОМЕНТ ЗАПУСКА ТАЙМЕРА
+                # Отправляем финальный ответ клиентам
                 response_data = json.dumps({"response": response, "audio_length": audio_length})
                 await websocket.send_text(response_data)
 
                 print(f"Sent response: {response}")
 
-                # Запускаем таймер перед освобождением AI (аудио + 10 сек)
+                # Запускаем таймер перед освобождением AI
                 asyncio.create_task(reset_ai_status(audio_length + 10))
             else:
                 print("TTS processing failed. AI will become free immediately.")
@@ -120,7 +127,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
-
+        
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
