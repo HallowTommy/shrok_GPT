@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
-import asyncio
+import json
 
 # Initialize FastAPI
 app = FastAPI()
@@ -16,26 +16,13 @@ if tokenizer.pad_token is None:
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
-# List of active WebSocket connections
-active_connections = set()
-# Dialogue history for each user
-dialogue_history = {}
-
-# Global control variables
-is_processing = False  # Blocks new requests while a response is being generated
-block_time = 0  # Stores the time (in seconds) for which new requests are blocked
-
 # TTS Server URL
 TTS_SERVER_URL = "https://tacotrontts-production.up.railway.app/generate"
-
-# Welcome message
-WELCOME_MESSAGE = "Address me as @ShrokAI and type your message so I can hear you."
-BUSY_MESSAGE = "ShrokAI is busy, please wait for the current response to complete."
 
 # Character description for prompt
 character_description = """
 Your name is Shrok, a green ogre streamer obsessed with psychoactive mushrooms.
-They grant you visions of the crypto market’s future and summon the niger gnome.
+They grant you visions of the crypto market’s future and summon the black gnome.
 You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard Solana enthusiast.
 Always reply briefly and with humor.
 """
@@ -49,12 +36,12 @@ def generate_shrokai_response(user_input, history):
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=20,
+        max_new_tokens=100,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.6, 
+        temperature=0.7,
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -64,76 +51,39 @@ def generate_shrokai_response(user_input, history):
 
 # Function to send text to TTS and receive audio length
 def send_to_tts(text):
-    global block_time
     try:
         response = requests.post(TTS_SERVER_URL, json={"text": text})
         if response.status_code == 200:
             data = response.json()
-            audio_length = data.get("audio_length", 0)  # Получаем длину аудио
-            block_time = audio_length + 10  # Устанавливаем время блокировки
-            return audio_length
+            return data.get("audio_length", 0)  # Получаем длину аудио
     except Exception as e:
         print(f"Error sending to TTS: {e}")
     return 0
 
-# Function to handle blocking logic
-async def unblock_after_delay():
-    global is_processing
-    print(f"Blocking requests for {block_time} seconds...")
-    await asyncio.sleep(block_time)
-    is_processing = False
-    print("Unblocking requests.")
-
-# WebSocket endpoint for client interaction
+# WebSocket endpoint for AI processing
 @app.websocket("/ws/ai")
 async def websocket_endpoint(websocket: WebSocket):
-    global is_processing
     await websocket.accept()
-    active_connections.add(websocket)
-    user_id = id(websocket)
-    dialogue_history[user_id] = []
-    
-    # Send welcome message to new user
-    await websocket.send_text(WELCOME_MESSAGE)
     
     try:
         while True:
-            data = await websocket.receive_text()
-            print(f"Received: {data}")
+            message = await websocket.receive_text()
+            print(f"Processing request: {message}")
 
-            # Если ИИ уже обрабатывает запрос, отправляем заглушку сразу
-            if is_processing:
-                print("ShrokAI is currently busy. Sending busy message.")
-                await websocket.send_text(BUSY_MESSAGE)
-                continue  # Прерываем обработку текущего сообщения, не передавая его ИИ
+            # Generate response from AI
+            response = generate_shrokai_response(message, [])
 
-            # Помечаем, что началась обработка
-            is_processing = True
-
-            # Добавляем сообщение в историю и генерируем ответ
-            dialogue_history[user_id].append(f"User: {data}")
-            response = generate_shrokai_response(data, dialogue_history[user_id])
-            dialogue_history[user_id].append(f"ShrokAI: {response}")
-
-            # Рассылаем ответ от ИИ всем пользователям
-            for connection in list(active_connections):
-                try:
-                    await connection.send_text(response)
-                except Exception as e:
-                    print(f"Failed to send message to a client: {e}")
-                    active_connections.remove(connection)
-                print(f"Sent to client: {response}")
-
-            # Отправляем текст в TTS и получаем длительность аудиофайла
+            # Send text to TTS and get audio length
             audio_length = send_to_tts(response)
-            
-            # Запускаем таймер разблокировки
-            asyncio.create_task(unblock_after_delay())
+
+            # Send JSON response back to proxy
+            response_data = json.dumps({"response": response, "audio_length": audio_length})
+            await websocket.send_text(response_data)
+
+            print(f"Sent response: {response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
-        active_connections.remove(websocket)
-        del dialogue_history[user_id]
     except Exception as e:
         print(f"Unexpected error: {e}")
         await websocket.close(code=1001)
@@ -141,4 +91,3 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
-
