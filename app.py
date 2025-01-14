@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import requests
 import json
+import re
 
 # Initialize FastAPI
 app = FastAPI()
@@ -26,6 +27,23 @@ They grant you visions of the crypto market’s future and summon the black gnom
 You are a swamp prophet of memecoins, a mushroom-fueled shaman, and a die-hard Solana enthusiast.
 Always reply briefly and with humor.
 """
+
+# Function to clean text before sending to TTS
+def clean_text_for_tts(text):
+    """Удаляет из текста ненужные символы, очищает переходы на новую строку."""
+    allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?()'\"-:; "
+    
+    # Убираем все символы, которые не входят в список разрешённых
+    cleaned_text = "".join(c for c in text if c in allowed_chars)
+    
+    # Удаляем повторяющиеся знаки препинания (например, "!!!" → "!")
+    cleaned_text = re.sub(r'([.,!?;:-])\1+', r'\1', cleaned_text)
+
+    # Убираем все переходы на новую строку и лишние пробелы
+    cleaned_text = cleaned_text.replace("\n", " ").replace("\r", " ")
+    cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
+
+    return cleaned_text.strip()
 
 # Function to generate ShrokAI's response
 def generate_shrokai_response(user_input, history):
@@ -77,15 +95,18 @@ async def websocket_endpoint(websocket: WebSocket):
             # Generate response from AI
             response = generate_shrokai_response(message, [])
 
+            # 🔥 Очищаем ответ перед отправкой в TTS и клиенту
+            cleaned_response = clean_text_for_tts(response)
+
             # Send text to TTS and get audio length
-            audio_length = send_to_tts(response)
+            audio_length = send_to_tts(cleaned_response)
 
             # Send JSON response back to proxy
-            response_data = json.dumps({"response": response, "audio_length": audio_length})
+            response_data = json.dumps({"response": cleaned_response, "audio_length": audio_length})
 
-            await websocket.send_text(response_data)  # 🔥 Отправляем ответ и НЕ закрываем соединение
+            await websocket.send_text(response_data)  # 🔥 Отправляем очищенный ответ
 
-            print(f"Sent response: {response}")
+            print(f"Sent response: {cleaned_response}")
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
@@ -96,3 +117,4 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
