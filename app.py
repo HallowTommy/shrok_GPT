@@ -36,12 +36,12 @@ def generate_shrokai_response(user_input, history):
     outputs = model.generate(
         inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
-        max_new_tokens=100,
+        max_new_tokens=20,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         pad_token_id=tokenizer.pad_token_id,
         do_sample=True,
-        temperature=0.7,
+        temperature=0.6,
         top_p=0.9
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
